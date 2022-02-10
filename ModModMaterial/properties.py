@@ -27,7 +27,8 @@ class MMM_Scene_Props(PropertyGroup):
         for frame in frames:
             # Only display frames which contain editable nodes
             children = sorted([n for n in nodes if n.parent ==
-                               frame and n.type in ['VALUE', 'FRAME']], key=lambda x: x.label)
+                               frame and n.type in ['VALUE', 'FRAME']],
+                              key=lambda x: x.label)
 
             if children:
                 if frame.label:

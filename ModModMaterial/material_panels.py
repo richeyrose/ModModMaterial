@@ -9,6 +9,15 @@ class MODMODMAT_PT_Material_options(Panel):
     bl_context = 'material'
     bl_order = 1
 
+    @classmethod
+    def poll(cls, context):
+        try:
+            for node in context.object.active_material.node_tree.nodes:
+                return node.type == 'FRAME'
+            return False
+        except AttributeError:
+            return False
+
     def draw(self, context):
         scene = context.scene
         scene_props = scene.mmm_scene_props
