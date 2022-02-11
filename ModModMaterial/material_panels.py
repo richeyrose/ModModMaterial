@@ -73,19 +73,64 @@ def display_framed_nodes(self, frame, children):
         frame (bpy.types.NodeFrame): Frame
         children (list): List of child nodes
     """
+    if frame.label:
+        frame_label = frame.label
+    else:
+        frame_label = frame.name
+
     layout = self.layout
-    layout.label(text=frame.label)
+    layout.label(text=frame_label)
     for child in children:
+        if child.label:
+            child_label = child.label
+        else:
+            child_label = child.name
+
         if child.type == 'VALUE':
             layout.prop(child.outputs['Value'],
-                        'default_value', text=child.label)
+                        'default_value', text=child_label)
         elif child.type == 'GROUP':
-            display_group_inputs(self, child)
-        elif child.type == 'VALTORGB':
-            display_color_ramp(self, child)
+            display_group_inputs(self, child, child_label)
+
+        # Curves
+        elif child.type == 'CURVE_VEC':
+            layout.label(text=child_label)
+            layout.template_curve_mapping(
+                child, 'mapping')
+        elif child.type == 'CURVE_FLOAT':
+            layout.label(text=child_label)
+            layout.template_curve_mapping(
+                child, 'mapping')
+        elif child.type == 'CURVE_RGB':
+            layout.label(text=child_label)
+            layout.template_curve_mapping(
+                child, 'mapping')
+
+        # Color
+        elif child.type == 'VALTORGB':  # Color ramp
+            layout.label(text=child_label)
+            layout.template_color_ramp(child, 'color_ramp', expand=True)
+        elif child.type == 'RGB':
+            layout.label(text=child_label)
+            layout.template_color_picker(child, 'color', value_slider=True)
+
+        # texture
+        elif child.type == 'TEX_IMAGE':
+            display_img_tex_node(self, child, child_label)
 
 
-def display_group_inputs(self, node):
+def display_img_tex_node(self, node, node_label):
+    layout = self.layout
+    layout.label(text=node_label)
+    layout.template_ID(node, "image", new="image.new", open="image.open")
+    layout.prop(node, "interpolation", text="")
+    layout.prop(node, "projection", text="")
+    if node.projection == 'BOX':
+        layout.prop(node, "projection_blend", text="")
+    layout.prop(node, "extension", text="")
+
+
+def display_group_inputs(self, node, node_label):
     """Display all empty inputs in a group.
 
     Args:
@@ -94,11 +139,6 @@ def display_group_inputs(self, node):
     inputs = [i for i in node.inputs if not i.links]
 
     if inputs:
-        if node.label:
-            node_label = node.label
-        else:
-            node_label = node.name
-
         layout = self.layout
         layout.label(text=node_label)
 
@@ -108,19 +148,3 @@ def display_group_inputs(self, node):
             else:
                 input_label = i.name
             layout.prop(i, 'default_value', text=input_label)
-
-
-def display_color_ramp(self, node):
-    """Display Color Ramp nodes
-
-    Args:
-        node (bpy.types.ShaderNodeValToRGB): Color Ramp Node
-    """
-
-    if node.label:
-        node_label = node.label
-    else:
-        node_label = node.name
-    layout = self.layout
-    layout.label(text=node_label)
-    layout.template_color_ramp(node, 'color_ramp', expand=True)
