@@ -1,4 +1,19 @@
-from bpy.types import Panel
+from ctypes import Union
+from typing import List
+from .lib.multimethod import multimethod
+from bpy.types import (
+    Panel,
+    UILayout,
+    ShaderNodeTexImage,
+    ShaderNodeGroup,
+    ShaderNodeValue,
+    ShaderNodeRGB,
+    ShaderNodeValToRGB,
+    ShaderNodeVectorCurve,
+    ShaderNodeRGBCurve,
+    ShaderNodeFloatCurve,
+    Node,
+    NodeFrame)
 
 
 class MODMODMAT_PT_Material_options(Panel):
@@ -38,22 +53,22 @@ class MODMODMAT_PT_Material_options(Panel):
                 pass
 
 
-def create_nodes_panel(self, nodes, parent):
-    """Display all nodes within a frame, including nodes contained in sub frames.
+def create_nodes_panel(self, nodes: list[Node], frame: NodeFrame) -> None:
+    """Recursively display all nodes within a frame, including nodes contained in sub frames.
 
     Args:
-        nodes (bpy_prop_collection): nodes to search within
-        parent (bpy.types.NodeFrame): parent node frame.
+        nodes (list[Node]): nodes to search within
+        frame (bpy.types.NodeFrame): parent node frame.
     """
     children = [n for n in nodes if n.parent ==
-                parent and n.type != 'FRAME']
+                frame and n.type != 'FRAME']
 
     frames = sorted([n for n in nodes if n.parent ==
-                    parent and n.type == 'FRAME'],
+                    frame and n.type == 'FRAME'],
                     key=lambda x: x.label)
 
     if not frames:
-        display_framed_nodes(self, parent, children)
+        display_framed_nodes(self, frame, children)
         return
 
     # handles nested frames
@@ -62,11 +77,11 @@ def create_nodes_panel(self, nodes, parent):
 
     if children:
         children = [n for n in children if n.type != 'FRAME']
-        display_framed_nodes(self, parent, children)
+        display_framed_nodes(self, frame, children)
     return
 
 
-def display_framed_nodes(self, frame, children):
+def display_framed_nodes(self, frame: NodeFrame, children: List[Node]) -> None:
     """Display all nodes in a frame.
 
     Args:
@@ -85,42 +100,47 @@ def display_framed_nodes(self, frame, children):
             child_label = child.label
         else:
             child_label = child.name
-
-        if child.type == 'VALUE':
-            layout.prop(child.outputs['Value'],
-                        'default_value', text=child_label)
-        elif child.type == 'GROUP':
-            display_group_inputs(self, child, child_label)
-
-        # Curves
-        elif child.type == 'CURVE_VEC':
+        try:
+            display_node(layout, child, child_label)
+        # catch unsupported node types
+        except TypeError:
             layout.label(text=child_label)
-            layout.template_curve_mapping(
-                child, 'mapping')
-        elif child.type == 'CURVE_FLOAT':
-            layout.label(text=child_label)
-            layout.template_curve_mapping(
-                child, 'mapping')
-        elif child.type == 'CURVE_RGB':
-            layout.label(text=child_label)
-            layout.template_curve_mapping(
-                child, 'mapping')
-
-        # Color
-        elif child.type == 'VALTORGB':  # Color ramp
-            layout.label(text=child_label)
-            layout.template_color_ramp(child, 'color_ramp', expand=True)
-        elif child.type == 'RGB':
-            layout.label(text=child_label)
-            layout.template_color_picker(child, 'color', value_slider=True)
-
-        # texture
-        elif child.type == 'TEX_IMAGE':
-            display_img_tex_node(self, child, child_label)
+            layout.label(text="Node type not supported.")
 
 
-def display_img_tex_node(self, node, node_label):
-    layout = self.layout
+@multimethod(UILayout, ShaderNodeValue, str)
+def display_node(layout, node: ShaderNodeValue, node_label: str) -> None:
+    layout.prop(node.outputs['Value'],
+                'default_value', text=node_label)
+
+
+@multimethod(UILayout, ShaderNodeRGB, str)
+def display_node(layout, node: ShaderNodeRGB, node_label: str) -> None:
+    layout.label(text=node_label)
+    layout.template_color_picker(node, 'color', value_slider=True)
+
+
+@multimethod(UILayout, ShaderNodeValToRGB, str)
+def display_node(layout, node: ShaderNodeValToRGB, node_label: str) -> None:
+    layout.label(text=node_label)
+    layout.template_color_ramp(node, 'color_ramp', expand=True)
+
+
+@multimethod(UILayout, ShaderNodeFloatCurve, str)
+def display_node(layout, node: list, node_label: str) -> None:
+    layout.label(text=node_label)
+    layout.template_curve_mapping(
+        node, 'mapping')
+
+
+@multimethod(UILayout, ShaderNodeTexImage, str)
+def display_node(layout, node: ShaderNodeTexImage, node_label: str) -> None:
+    """Display inputs for image texture node.
+
+    Args:
+        node (bpy.types.ShaderNodeTexImage): node
+        node_label (str): node_label
+    """
     layout.label(text=node_label)
     layout.template_ID(node, "image", new="image.new", open="image.open")
     layout.prop(node, "interpolation", text="")
@@ -130,16 +150,17 @@ def display_img_tex_node(self, node, node_label):
     layout.prop(node, "extension", text="")
 
 
-def display_group_inputs(self, node, node_label):
+@multimethod(UILayout, ShaderNodeGroup, str)
+def display_node(layout, node: ShaderNodeGroup, node_label: str) -> None:
     """Display all empty inputs in a group.
 
     Args:
         node (bpy.types.ShaderNodeGroup): Group Node
+        node_label (str): Node label
     """
     inputs = [i for i in node.inputs if not i.links]
 
     if inputs:
-        layout = self.layout
         layout.label(text=node_label)
 
         for i in inputs:
