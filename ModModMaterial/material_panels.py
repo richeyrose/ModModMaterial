@@ -19,6 +19,7 @@ from bpy.types import (
     ShaderNodeFloatCurve,
     Node,
     NodeFrame)
+from bpy_extras.node_utils import find_node_input
 
 
 class MODMODMAT_PT_Material_options(Panel):
@@ -76,33 +77,40 @@ def create_nodes_panel(self, context, nodes: list[Node], frame: NodeFrame) -> No
                     key=lambda x: x.label)
 
     if not frames:
-        display_framed_nodes(self, context, frame, children)
+        display_framed_nodes(self, context, children)
         return
 
     # handles nested frames
-    for frame in frames:
-        create_nodes_panel(self, context, nodes, frame)
+    layout = self.layout
+    for f in frames:
+        if f.label:
+            frame_label = f.label
+        else:
+            frame_label = f.name
+        layout.label(text=frame_label)
+        create_nodes_panel(self, context,  nodes, f)
 
     if children:
+        if frame.label:
+            frame_label = frame.label
+        else:
+            frame_label = frame.name
+        layout.label(text=frame_label)
         children = [n for n in children if n.type != 'FRAME']
-        display_framed_nodes(self, context, frame, children)
+        display_framed_nodes(self, context, children)
     return
 
 
-def display_framed_nodes(self, context, frame: NodeFrame, children: List[Node]) -> None:
+def display_framed_nodes(self, context, children: List[Node]) -> None:
     """Display all nodes in a frame.
 
     Args:
         frame (bpy.types.NodeFrame): Frame
         children (list): List of child nodes
     """
-    if frame.label:
-        frame_label = frame.label
-    else:
-        frame_label = frame.name
 
     layout = self.layout
-    layout.label(text=frame_label)
+
     for child in children:
         if child.label:
             child_label = child.label
@@ -110,11 +118,6 @@ def display_framed_nodes(self, context, frame: NodeFrame, children: List[Node]) 
             child_label = child.name
         try:
             display_node(self, context, child_label, child)
-            # if child.type == 'CURVE_RGB':
-            #     display_rgb_curve_node(self, layout, child)
-            # else:
-            #     display_node(layout, child, child_label)
-
         # catch unsupported node types
         except TypeError:
             layout.label(text=child_label)
@@ -128,14 +131,14 @@ def display_node(self, context, node_label, node) -> None:
         return
 
     layout = self.layout
-    box = layout.box()
-    row = box.row()
+    if node.type != 'VALUE':
+        row = layout.row()
+        icon = 'DOWNARROW_HLT' if node.subpanel_status else 'RIGHTARROW'
+        row.prop(node, 'subpanel_status', icon=icon,
+                 icon_only=True, emboss=False)
+        row.label(text=node_label)
 
-    icon = 'DOWNARROW_HLT' if node.subpanel_status else 'RIGHTARROW'
-    row.prop(node, 'subpanel_status', icon=icon, icon_only=True, emboss=False)
-    row.label(text=node_label)
-
-    if node.subpanel_status:
+    if node.subpanel_status or node.type == 'VALUE':
         layout.context_pointer_set("node", node)
         if hasattr(node, "draw_buttons_ext"):
             node.draw_buttons_ext(context, layout)
