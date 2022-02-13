@@ -4,6 +4,7 @@ import bpy
 from bpy.props import PointerProperty, EnumProperty, BoolProperty
 from bpy.app.translations import pgettext_iface as iface_
 from bpy.types import (
+    Scene,
     Context,
     Panel,
     PropertyGroup,
@@ -123,30 +124,40 @@ def display_framed_nodes(self, context, frame: NodeFrame, children: List[Node]) 
 def display_node(self, context, node_label, node) -> None:
     if node.type in ('REROUTE', 'FRAME'):
         return
-    layout = self.layout
-    layout.label(text=node_label)
-    layout.context_pointer_set("node", node)
-    if hasattr(node, "draw_buttons_ext"):
-        node.draw_buttons_ext(context, layout)
-    elif hasattr(node, "draw_buttons"):
-        node.draw_buttons(context, layout)
+    if node.mmm_node_props.exclude_node:
+        return
 
-    # XXX this could be filtered further to exclude socket types
-    # which don't have meaningful input values (e.g. cycles shader)
-    value_inputs = [
-        socket for socket in node.inputs if self.show_socket_input(socket)]
-    if value_inputs:
-        layout.separator()
-        layout.label(text="Inputs:")
-        for socket in value_inputs:
-            row = layout.row()
-            socket.draw(
-                context,
-                row,
-                node,
-                iface_(socket.label if socket.label else socket.name,
-                       socket.bl_rna.translation_context),
-            )
+    layout = self.layout
+    box = layout.box()
+    row = box.row()
+
+    icon = 'DOWNARROW_HLT' if node.subpanel_status else 'RIGHTARROW'
+    row.prop(node, 'subpanel_status', icon=icon, icon_only=True, emboss=False)
+    row.label(text=node_label)
+
+    if node.subpanel_status:
+        layout.context_pointer_set("node", node)
+        if hasattr(node, "draw_buttons_ext"):
+            node.draw_buttons_ext(context, layout)
+        elif hasattr(node, "draw_buttons"):
+            node.draw_buttons(context, layout)
+
+        # XXX this could be filtered further to exclude socket types
+        # which don't have meaningful input values (e.g. cycles shader)
+        value_inputs = [
+            socket for socket in node.inputs if self.show_socket_input(socket)]
+        if value_inputs:
+            layout.separator()
+            layout.label(text="Inputs:")
+            for socket in value_inputs:
+                row = layout.row()
+                socket.draw(
+                    context,
+                    row,
+                    node,
+                    iface_(socket.label if socket.label else socket.name,
+                           socket.bl_rna.translation_context),
+                )
 
 
 class MMM_Scene_Props(PropertyGroup):
@@ -190,10 +201,11 @@ class MMM_Scene_Props(PropertyGroup):
 def register():
     bpy.types.Scene.mmm_scene_props = PointerProperty(
         type=MMM_Scene_Props)
-    Scene.subpanel_status = BoolProperty(
+    Node.subpanel_status = BoolProperty(
         default=False
     )
 
 
 def unregister():
+    del Node.subpanel_status
     del bpy.types.Scene.mmm_scene_props
