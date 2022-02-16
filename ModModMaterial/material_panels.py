@@ -1,25 +1,12 @@
 from typing import List
-from .lib.multimethod import multimethod
 import bpy
-from bpy.props import PointerProperty, EnumProperty, BoolProperty
+from bpy.props import PointerProperty, EnumProperty
 from bpy.app.translations import pgettext_iface as iface_
 from bpy.types import (
-    Scene,
-    Context,
     Panel,
     PropertyGroup,
-    UILayout,
-    ShaderNodeTexImage,
-    ShaderNodeGroup,
-    ShaderNodeValue,
-    ShaderNodeRGB,
-    ShaderNodeValToRGB,
-    ShaderNodeVectorCurve,
-    ShaderNodeRGBCurve,
-    ShaderNodeFloatCurve,
     Node,
     NodeFrame)
-from bpy_extras.node_utils import find_node_input
 
 
 class MODMODMAT_PT_Material_options(Panel):
@@ -32,20 +19,34 @@ class MODMODMAT_PT_Material_options(Panel):
 
     @classmethod
     def poll(cls, context):
+        """Check there is a valid frame in node tree.
+
+        Args:
+            context (bpy.types.Context): Blender Context
+
+        Returns:
+            bool: bool
+        """
         try:
             for node in context.object.active_material.node_tree.nodes:
-                return node.type == 'FRAME'
+                if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                    return True
             return False
         except AttributeError:
             return False
 
     def draw(self, context):
+        """Draw panel in material properties
+
+        Args:
+            context (bpy.types.Context): Blender context
+        """
         scene = context.scene
         scene_props = scene.mmm_scene_props
         layout = self.layout
-
         if scene_props.top_level_frame:
             layout.prop(scene_props, 'top_level_frame')
+            layout.separator()
             top_level_frame = scene_props.top_level_frame
 
             obj = context.object
@@ -54,50 +55,70 @@ class MODMODMAT_PT_Material_options(Panel):
             nodes = tree.nodes
             try:
                 parent_frame = nodes[top_level_frame]
-                create_nodes_panel(self, context, nodes, parent_frame)
+                display_frame(self, context, nodes, parent_frame)
             except KeyError:
                 pass
 
-    def show_socket_input(self, socket):
-        return hasattr(socket, 'draw') and socket.enabled and not socket.is_linked
 
-
-def create_nodes_panel(self, context, nodes: list[Node], frame: NodeFrame) -> None:
+def display_frame(self, context, nodes: list[Node], frame: NodeFrame) -> None:
     """Recursively display all nodes within a frame, including nodes contained in sub frames.
 
     Args:
+        context (bpy.types.Context): blender context
         nodes (list[Node]): nodes to search within
         frame (bpy.types.NodeFrame): parent node frame.
     """
-    children = [n for n in nodes if n.parent ==
-                frame and n.type != 'FRAME']
+    children = sorted([n for n in nodes if n.parent ==
+                       frame and n.type != 'FRAME'],
+                      key=lambda x: x.label)
 
     frames = sorted([n for n in nodes if n.parent ==
                     frame and n.type == 'FRAME'],
                     key=lambda x: x.label)
 
-    if not frames:
+    if not frames and children:
         display_framed_nodes(self, context, children)
         return
 
-    # handles nested frames
     layout = self.layout
-    for f in frames:
-        if f.label:
-            frame_label = f.label
-        else:
-            frame_label = f.name
-        layout.label(text=frame_label)
-        create_nodes_panel(self, context,  nodes, f)
 
     if children:
         if frame.label:
             frame_label = frame.label
         else:
             frame_label = frame.name
-        layout.label(text=frame_label)
-        children = [n for n in children if n.type != 'FRAME']
-        display_framed_nodes(self, context, children)
+
+        node_props = frame.mmm_node_props
+        subpanel_status = node_props.subpanel_status
+
+        row = layout.row()
+        icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
+        row.prop(node_props, 'subpanel_status', icon=icon,
+                 icon_only=True, emboss=False)
+        row.label(text=frame_label)
+
+        if subpanel_status:
+            children = [n for n in children if n.type != 'FRAME']
+            display_framed_nodes(self, context, children)
+
+    # handles nested frames
+    for f in frames:
+        if f.label:
+            frame_label = f.label
+        else:
+            frame_label = f.name
+        row = layout.row()
+        node_props = f.mmm_node_props
+        subpanel_status = node_props.subpanel_status
+
+        icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
+        row.prop(node_props, 'subpanel_status', icon=icon,
+                 icon_only=True, emboss=False)
+        row.label(text=frame_label)
+
+        if subpanel_status:
+            display_frame(self, context,  nodes, f)
+
     return
 
 
@@ -105,7 +126,7 @@ def display_framed_nodes(self, context, children: List[Node]) -> None:
     """Display all nodes in a frame.
 
     Args:
-        frame (bpy.types.NodeFrame): Frame
+        context (bpy.types.Context): context
         children (list): List of child nodes
     """
 
@@ -125,28 +146,30 @@ def display_framed_nodes(self, context, children: List[Node]) -> None:
 
 
 def display_node(self, context, node_label, node) -> None:
+    """Display node properties in panel.
+
+    Args:
+        context (bpy.types.Context): context
+        node_label (str): node_label
+        node (bpy.types.Node): Node to display.
+    """
     if node.type in ('REROUTE', 'FRAME'):
         return
     if node.mmm_node_props.exclude_node:
         return
 
     layout = self.layout
-    if node.type != 'VALUE':
-        row = layout.row()
-        icon = 'DOWNARROW_HLT' if node.subpanel_status else 'RIGHTARROW'
-        row.prop(node, 'subpanel_status', icon=icon,
-                 icon_only=True, emboss=False)
-        row.label(text=node_label)
 
-    if node.subpanel_status or node.type == 'VALUE':
+    if node.type == 'VALUE':
+        layout.prop(node.outputs['Value'], 'default_value', text=node_label)
+    else:
+        layout.label(text=node_label)
         layout.context_pointer_set("node", node)
         if hasattr(node, "draw_buttons_ext"):
             node.draw_buttons_ext(context, layout)
         elif hasattr(node, "draw_buttons"):
             node.draw_buttons(context, layout)
 
-        # XXX this could be filtered further to exclude socket types
-        # which don't have meaningful input values (e.g. cycles shader)
         value_inputs = [
             socket for socket in node.inputs if self.show_socket_input(socket)]
         if value_inputs:
@@ -164,7 +187,21 @@ def display_node(self, context, node_label, node) -> None:
 
 
 class MMM_Scene_Props(PropertyGroup):
+    """Mod Mod Material Scene Properties.
+
+    Args:
+        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
+    """
+
     def create_frame_enums(self, context):
+        """Return enum list of frame nodes that have expose_frame property set to True.
+
+        Args:
+            context (bpy.types.Context): blender context
+
+        Returns:
+            list(enum_items): enum items.
+        """
         enum_items = []
         if context is None:
             return enum_items
@@ -176,7 +213,7 @@ class MMM_Scene_Props(PropertyGroup):
         try:
             frames = sorted([
                 n for n in nodes
-                if n.type == 'FRAME' and n.mmm_frame_props.expose_frame],
+                if n.type == 'FRAME' and n.mmm_node_props.expose_frame],
                 key=lambda n: n.label)
         except KeyError:
             return enum_items
@@ -204,11 +241,7 @@ class MMM_Scene_Props(PropertyGroup):
 def register():
     bpy.types.Scene.mmm_scene_props = PointerProperty(
         type=MMM_Scene_Props)
-    Node.subpanel_status = BoolProperty(
-        default=False
-    )
 
 
 def unregister():
-    del Node.subpanel_status
     del bpy.types.Scene.mmm_scene_props

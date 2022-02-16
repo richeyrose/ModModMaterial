@@ -1,6 +1,7 @@
 import bpy
 from bpy.types import Panel, PropertyGroup, NodeFrame
 from bpy.props import PointerProperty, BoolProperty
+from .lib.utils import get_prefs
 
 
 class MODMODMAT_PT_Node_Options(Panel):
@@ -19,35 +20,34 @@ class MODMODMAT_PT_Node_Options(Panel):
         layout = self.layout
         node = context.active_node
         if node.type == 'FRAME':
-            layout.prop(node.mmm_frame_props, 'expose_frame')
+            layout.prop(node.mmm_node_props, 'expose_frame')
 
         if node.type != 'FRAME':
             layout.prop(node.mmm_node_props, 'exclude_node')
 
 
-class MMM_Frame_Props(PropertyGroup):
+class MMM_Node_Props(PropertyGroup):
+    prefs = get_prefs()
+
+    exclude_node: BoolProperty(
+        name="Exclude Node",
+        description="Don't show this node in UI.",
+        default=False)
+
+    subpanel_status: BoolProperty(
+        name="Show Subpanel",
+        default=True)
+
     expose_frame: BoolProperty(
         name="Expose Frame",
         description="Expose frame and nodes in material panel?",
         default=False)
 
 
-class MMM_Node_Props(PropertyGroup):
-    exclude_node: BoolProperty(
-        name="Exclude Node",
-        description="Don't show this node in UI.",
-        default=False)
-
-
 def register():
-    bpy.types.NodeFrame.mmm_frame_props = PointerProperty(
-        type=MMM_Frame_Props
-    )
     bpy.types.Node.mmm_node_props = PointerProperty(
-        type=MMM_Node_Props
-    )
+        type=MMM_Node_Props)
 
 
 def unregister():
     del bpy.types.Node.mmm_node_props
-    del bpy.types.NodeFrame.mmm_frame_props
