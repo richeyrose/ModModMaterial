@@ -80,46 +80,42 @@ def display_frame(self, context, nodes: list[Node], frame: NodeFrame) -> None:
         display_framed_nodes(self, context, children)
         return
 
-    layout = self.layout
+    subpanel_status = frame.mmm_node_props.subpanel_status
 
     if children:
-        if frame.label:
-            frame_label = frame.label
-        else:
-            frame_label = frame.name
-
-        node_props = frame.mmm_node_props
-        subpanel_status = node_props.subpanel_status
-
-        row = layout.row()
-        icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
-        row.prop(node_props, 'subpanel_status', icon=icon,
-                 icon_only=True, emboss=False)
-        row.label(text=frame_label)
-
+        display_subpanel_label(self, subpanel_status, frame)
         if subpanel_status:
             children = [n for n in children if n.type != 'FRAME']
             display_framed_nodes(self, context, children)
 
-    # handles nested frames
-    for f in frames:
-        if f.label:
-            frame_label = f.label
-        else:
-            frame_label = f.name
-        row = layout.row()
-        node_props = f.mmm_node_props
-        subpanel_status = node_props.subpanel_status
-
-        icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
-        row.prop(node_props, 'subpanel_status', icon=icon,
-                 icon_only=True, emboss=False)
-        row.label(text=frame_label)
-
-        if subpanel_status:
-            display_frame(self, context,  nodes, f)
+        # handles nested frames
+        for f in frames:
+            if [n for n in nodes if n.parent == f]:
+                subpanel_status = f.mmm_node_props.subpanel_status
+                display_subpanel_label(self, subpanel_status,  f)
+                if subpanel_status:
+                    display_frame(self, context,  nodes, f)
 
     return
+
+
+def display_subpanel_label(self, subpanel_status: bool, node: Node) -> None:
+    """Display a label with a dropdown control for showing and hiding a subpanel.
+
+    Args:
+        subpanel_status (Bool): Controls arrow state
+        f (bpy.types.Node): Node
+    """
+    layout = self.layout
+    if node.label:
+        node_label = node.label
+    else:
+        node_label = node.name
+    row = layout.row()
+    icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
+    row.prop(node.mmm_node_props, 'subpanel_status', icon=icon,
+             icon_only=True, emboss=False)
+    row.label(text=node_label)
 
 
 def display_framed_nodes(self, context, children: List[Node]) -> None:
@@ -171,7 +167,7 @@ def display_node(self, context, node_label, node) -> None:
             node.draw_buttons(context, layout)
 
         value_inputs = [
-            socket for socket in node.inputs if self.show_socket_input(socket)]
+            socket for socket in node.inputs]
         if value_inputs:
             layout.separator()
             layout.label(text="Inputs:")
