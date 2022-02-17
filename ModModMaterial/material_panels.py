@@ -7,6 +7,30 @@ from bpy.types import (
     PropertyGroup,
     Node,
     NodeFrame)
+from .lib.utils import get_prefs
+
+
+class NODE_EXPOSE_PT_Material_N_Panel(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Material_N_Panel'
+    bl_label = 'Material Options'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.show_mat_options_in_n_menu:
+            return mat_has_exposed_nodes(context)
+        return False
+
+    def draw(self, context):
+        """Draw panel in material properties
+
+        Args:
+            context (bpy.types.Context): Blender context
+        """
+        draw_material_panel(self, context)
 
 
 class MODMODMAT_PT_Material_options(Panel):
@@ -27,13 +51,10 @@ class MODMODMAT_PT_Material_options(Panel):
         Returns:
             bool: bool
         """
-        try:
-            for node in context.object.active_material.node_tree.nodes:
-                if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
-                    return True
-            return False
-        except AttributeError:
-            return False
+        prefs = get_prefs()
+        if prefs.show_mat_options_in_mat_props:
+            return mat_has_exposed_nodes(context)
+        return False
 
     def draw(self, context):
         """Draw panel in material properties
@@ -41,23 +62,77 @@ class MODMODMAT_PT_Material_options(Panel):
         Args:
             context (bpy.types.Context): Blender context
         """
+        draw_material_panel(self, context)
+
+
+class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Geometry_N_Panel'
+    bl_label = 'Geometry Node Options'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            mods = context.object.modifiers
+            for mod in mods:
+                if mod.type == 'NODES':
+                    for node in mod.node_group.nodes:
+                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                            return True
+            return False
+        except AttributeError:
+            return False
+
+    def draw(self, context):
         scene = context.scene
         scene_props = scene.mmm_scene_props
         layout = self.layout
-        if scene_props.top_level_frame:
-            layout.prop(scene_props, 'top_level_frame')
-            layout.separator()
-            top_level_frame = scene_props.top_level_frame
+        obj = context.object
+        mods = [m for m in obj.modifiers if m.type == 'NODES']
+        for mod in mods:
+            node_group = mod.node_group
+            nodes = node_group.nodes
+            for node in nodes:
+                layout = self.layout
+                layout.label(text=node.name)
+        # node_groups = [
+        #     m.node_group.nodes for m in obj.modifiers if m.type == 'NODES']
+        # #nodes = [n.nodes for n in node_groups]
+        # for n in node_groups:
+        #     layout = self.layout
+        #     layout.label(text=n.name)
 
-            obj = context.object
-            mat = obj.active_material
-            tree = mat.node_tree
-            nodes = tree.nodes
-            try:
-                parent_frame = nodes[top_level_frame]
-                display_frame(self, context, nodes, parent_frame)
-            except KeyError:
-                pass
+
+def mat_has_exposed_nodes(context):
+    try:
+        for node in context.object.active_material.node_tree.nodes:
+            if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                return True
+        return False
+    except AttributeError:
+        return False
+
+
+def draw_material_panel(self, context):
+    scene = context.scene
+    scene_props = scene.mmm_scene_props
+    layout = self.layout
+    if scene_props.mat_top_level_frame:
+        layout.prop(scene_props, 'mat_top_level_frame')
+        layout.separator()
+        top_level_frame = scene_props.mat_top_level_frame
+
+        obj = context.object
+        mat = obj.active_material
+        tree = mat.node_tree
+        nodes = tree.nodes
+        try:
+            parent_frame = nodes[top_level_frame]
+            display_frame(self, context, nodes, parent_frame)
+        except KeyError:
+            pass
 
 
 def display_frame(self, context, nodes: list[Node], frame: NodeFrame) -> None:
@@ -189,8 +264,20 @@ class MMM_Scene_Props(PropertyGroup):
         PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
     """
 
-    def create_frame_enums(self, context):
-        """Return enum list of frame nodes that have expose_frame property set to True.
+    def create_geom_frame_enums(self, context):
+        enum_items = []
+        if context is None:
+            return enum_items
+        obj = context.object
+        mods = context.object.modifiers
+
+        # exposes all nodes in all node modifiers
+        node_groups = [
+            m.node_group for m in obj.modifiers if m.type == 'NODES']
+        nodes = [n for n in node_groups]
+
+    def create_mat_frame_enums(self, context):
+        """Return enum list of active material frame nodes that have expose_frame property set to True.
 
         Args:
             context (bpy.types.Context): blender context
@@ -206,6 +293,10 @@ class MMM_Scene_Props(PropertyGroup):
         mat = obj.active_material
         tree = mat.node_tree
         nodes = tree.nodes
+
+        return self.create_node_enums(nodes, enum_items)
+
+    def create_node_enums(self, nodes, enum_items):
         try:
             frames = sorted([
                 n for n in nodes
@@ -228,10 +319,16 @@ class MMM_Scene_Props(PropertyGroup):
 
         return enum_items
 
-    top_level_frame: EnumProperty(
+    mat_top_level_frame: EnumProperty(
         name="Frame",
-        items=create_frame_enums,
+        items=create_mat_frame_enums,
         description="Any nodes or frames within this frame will be exposed for editing.")
+
+    geom_top_level_frame: EnumProperty(
+        name="Frame",
+        items=create_geom_frame_enums,
+        description="Any nodes or frames within this frame will be exposed for editing."
+    )
 
 
 def register():
