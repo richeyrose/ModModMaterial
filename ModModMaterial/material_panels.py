@@ -89,20 +89,21 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
         scene = context.scene
         scene_props = scene.mmm_scene_props
         layout = self.layout
-        obj = context.object
-        mods = [m for m in obj.modifiers if m.type == 'NODES']
-        for mod in mods:
-            node_group = mod.node_group
-            nodes = node_group.nodes
-            for node in nodes:
-                layout = self.layout
-                layout.label(text=node.name)
-        # node_groups = [
-        #     m.node_group.nodes for m in obj.modifiers if m.type == 'NODES']
-        # #nodes = [n.nodes for n in node_groups]
-        # for n in node_groups:
-        #     layout = self.layout
-        #     layout.label(text=n.name)
+
+        layout.prop(scene_props, 'geom_node_mod')
+
+        if scene_props.geom_top_level_frame:
+            layout.prop(scene_props, 'geom_top_level_frame')
+            layout.separator()
+            top_level_frame = scene_props.geom_top_level_frame
+
+            obj = context.object
+            mod = obj.modifiers[scene_props.geom_node_mod]
+            nodes = mod.node_group.nodes
+            try:
+                display_frame(self, context, nodes, nodes[top_level_frame])
+            except KeyError:
+                pass
 
 
 def mat_has_exposed_nodes(context):
@@ -129,8 +130,7 @@ def draw_material_panel(self, context):
         tree = mat.node_tree
         nodes = tree.nodes
         try:
-            parent_frame = nodes[top_level_frame]
-            display_frame(self, context, nodes, parent_frame)
+            display_frame(self, context, nodes, nodes[top_level_frame])
         except KeyError:
             pass
 
@@ -182,15 +182,19 @@ def display_subpanel_label(self, subpanel_status: bool, node: Node) -> None:
         f (bpy.types.Node): Node
     """
     layout = self.layout
-    if node.label:
-        node_label = node.label
-    else:
-        node_label = node.name
+    node_label = get_node_label(node)
     row = layout.row()
     icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
     row.prop(node.mmm_node_props, 'subpanel_status', icon=icon,
              icon_only=True, emboss=False)
     row.label(text=node_label)
+
+
+def get_node_label(node):
+    if node.label and not node.label.isspace():
+        return node.label
+    else:
+        return node.name
 
 
 def display_framed_nodes(self, context, children: List[Node]) -> None:
@@ -204,10 +208,7 @@ def display_framed_nodes(self, context, children: List[Node]) -> None:
     layout = self.layout
 
     for child in children:
-        if child.label:
-            child_label = child.label
-        else:
-            child_label = child.name
+        child_label = get_node_label(child)
         try:
             display_node(self, context, child_label, child)
         # catch unsupported node types
@@ -231,30 +232,34 @@ def display_node(self, context, node_label, node) -> None:
 
     layout = self.layout
 
-    if node.type == 'VALUE':
-        layout.prop(node.outputs['Value'], 'default_value', text=node_label)
-    else:
-        layout.label(text=node_label)
-        layout.context_pointer_set("node", node)
-        if hasattr(node, "draw_buttons_ext"):
-            node.draw_buttons_ext(context, layout)
-        elif hasattr(node, "draw_buttons"):
-            node.draw_buttons(context, layout)
+    subpanel_status = node.mmm_node_props.subpanel_status
+    display_subpanel_label(self, subpanel_status, node)
+    if subpanel_status:
+        if node.type == 'VALUE':
+            layout.prop(node.outputs['Value'],
+                        'default_value', text=node_label)
+        else:
+            # layout.label(text=node_label)
+            layout.context_pointer_set("node", node)
+            if hasattr(node, "draw_buttons_ext"):
+                node.draw_buttons_ext(context, layout)
+            elif hasattr(node, "draw_buttons"):
+                node.draw_buttons(context, layout)
 
-        value_inputs = [
-            socket for socket in node.inputs]
-        if value_inputs:
-            layout.separator()
-            layout.label(text="Inputs:")
-            for socket in value_inputs:
-                row = layout.row()
-                socket.draw(
-                    context,
-                    row,
-                    node,
-                    iface_(socket.label if socket.label else socket.name,
-                           socket.bl_rna.translation_context),
-                )
+            value_inputs = [
+                socket for socket in node.inputs]
+            if value_inputs:
+                layout.separator()
+                layout.label(text="Inputs:")
+                for socket in value_inputs:
+                    row = layout.row()
+                    socket.draw(
+                        context,
+                        row,
+                        node,
+                        iface_(socket.label if socket.label else socket.name,
+                               socket.bl_rna.translation_context),
+                    )
 
 
 class MMM_Scene_Props(PropertyGroup):
@@ -268,13 +273,12 @@ class MMM_Scene_Props(PropertyGroup):
         enum_items = []
         if context is None:
             return enum_items
-        obj = context.object
-        mods = context.object.modifiers
 
-        # exposes all nodes in all node modifiers
-        node_groups = [
-            m.node_group for m in obj.modifiers if m.type == 'NODES']
-        nodes = [n for n in node_groups]
+        scene_props = context.scene.mmm_scene_props
+        obj = context.object
+        mod = obj.modifiers[scene_props.geom_node_mod]
+        nodes = mod.node_group.nodes
+        return self.create_node_enums(nodes, enum_items)
 
     def create_mat_frame_enums(self, context):
         """Return enum list of active material frame nodes that have expose_frame property set to True.
@@ -296,6 +300,27 @@ class MMM_Scene_Props(PropertyGroup):
 
         return self.create_node_enums(nodes, enum_items)
 
+    def create_geom_node_mod_enums(self, context):
+        enum_items = []
+        if context is None:
+            return enum_items
+
+        obj = context.object
+        mods = sorted([m for m in obj.modifiers if m.type ==
+                      'NODES'], key=lambda m: m.name)
+
+        mods = set(
+            mod
+            for mod in obj.modifiers
+            if mod.type == 'NODES'
+            for node in mod.node_group.nodes
+            if node.type == 'FRAME' and node.mmm_node_props.expose_frame)
+
+        for mod in mods:
+            enum = (mod.name, mod.name, "")
+            enum_items.append(enum)
+        return enum_items
+
     def create_node_enums(self, nodes, enum_items):
         try:
             frames = sorted([
@@ -309,10 +334,7 @@ class MMM_Scene_Props(PropertyGroup):
             return enum_items
 
         for frame in frames:
-            if frame.label:
-                label = frame.label
-            else:
-                label = frame.name
+            label = get_node_label(frame)
 
             enum = (frame.name, label, "")
             enum_items.append(enum)
@@ -328,6 +350,12 @@ class MMM_Scene_Props(PropertyGroup):
         name="Frame",
         items=create_geom_frame_enums,
         description="Any nodes or frames within this frame will be exposed for editing."
+    )
+
+    geom_node_mod: EnumProperty(
+        name="Modifier",
+        items=create_geom_node_mod_enums,
+        description="Geometry node modifier to expose."
     )
 
 
