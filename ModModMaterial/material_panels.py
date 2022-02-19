@@ -12,7 +12,7 @@ from .lib.utils import get_prefs
 
 class NODE_EXPOSE_PT_Material_N_Panel(Panel):
     bl_idname = 'NODE_EXPOSE_PT_Material_N_Panel'
-    bl_label = 'Material Options'
+    bl_label = 'Material Nodes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Node Expose'
@@ -33,9 +33,9 @@ class NODE_EXPOSE_PT_Material_N_Panel(Panel):
         draw_material_panel(self, context)
 
 
-class MODMODMAT_PT_Material_options(Panel):
-    bl_idname = 'MODMODMAT_PT_Material_Options'
-    bl_label = 'Material Options'
+class NODE_EXPOSE_PT_Material_options(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Material_Options'
+    bl_label = 'Material Nodes'
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = 'material'
@@ -67,7 +67,7 @@ class MODMODMAT_PT_Material_options(Panel):
 
 class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
     bl_idname = 'NODE_EXPOSE_PT_Geometry_N_Panel'
-    bl_label = 'Geometry Node Options'
+    bl_label = 'Geometry Nodes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Node Expose'
@@ -90,10 +90,12 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
         scene_props = scene.mmm_scene_props
         layout = self.layout
 
-        layout.prop(scene_props, 'geom_node_mod')
+        layout.label(text="Node Modifier")
+        layout.prop(scene_props, 'geom_node_mod', text='')
 
         if scene_props.geom_top_level_frame:
-            layout.prop(scene_props, 'geom_top_level_frame')
+            layout.label(text="Top Level Frame")
+            layout.prop(scene_props, 'geom_top_level_frame', text='')
             layout.separator()
             top_level_frame = scene_props.geom_top_level_frame
 
@@ -101,12 +103,21 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
             mod = obj.modifiers[scene_props.geom_node_mod]
             nodes = mod.node_group.nodes
             try:
-                display_frame(self, context, nodes, nodes[top_level_frame])
+                display_frame(self, context, nodes,
+                              nodes[top_level_frame], top_level_frame)
             except KeyError:
                 pass
 
 
 def mat_has_exposed_nodes(context):
+    """Check if material has exposed frames.
+
+    Args:
+        context (bpy.types.Context): context
+
+    Returns:
+        bool: True is material contains exposed frames.
+    """
     try:
         for node in context.object.active_material.node_tree.nodes:
             if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
@@ -130,12 +141,13 @@ def draw_material_panel(self, context):
         tree = mat.node_tree
         nodes = tree.nodes
         try:
-            display_frame(self, context, nodes, nodes[top_level_frame])
+            display_frame(self, context, nodes,
+                          nodes[top_level_frame], top_level_frame)
         except KeyError:
             pass
 
 
-def display_frame(self, context, nodes: list[Node], frame: NodeFrame) -> None:
+def display_frame(self, context, nodes: list[Node], frame: NodeFrame, top_level_frame=None) -> None:
     """Recursively display all nodes within a frame, including nodes contained in sub frames.
 
     Args:
@@ -152,29 +164,29 @@ def display_frame(self, context, nodes: list[Node], frame: NodeFrame) -> None:
                     key=lambda x: x.label)
 
     if not frames and children:
-        display_framed_nodes(self, context, children)
+        display_framed_nodes(self, context, children, top_level_frame)
         return
 
     subpanel_status = frame.mmm_node_props.subpanel_status
 
     if children:
-        display_subpanel_label(self, subpanel_status, frame)
-        if subpanel_status:
-            children = [n for n in children if n.type != 'FRAME']
-            display_framed_nodes(self, context, children)
+        children = [n for n in children if n.type != 'FRAME']
+        display_framed_nodes(self, context, children, top_level_frame)
 
         # handles nested frames
         for f in frames:
             if [n for n in nodes if n.parent == f]:
                 subpanel_status = f.mmm_node_props.subpanel_status
-                display_subpanel_label(self, subpanel_status,  f)
+                display_subpanel_label(
+                    self, subpanel_status,  f, top_level_frame)
                 if subpanel_status:
-                    display_frame(self, context,  nodes, f)
+                    display_frame(self, context,  nodes,
+                                  f, top_level_frame)
 
     return
 
 
-def display_subpanel_label(self, subpanel_status: bool, node: Node) -> None:
+def display_subpanel_label(self, subpanel_status: bool, node: Node, top_level_frame=None) -> None:
     """Display a label with a dropdown control for showing and hiding a subpanel.
 
     Args:
@@ -182,22 +194,56 @@ def display_subpanel_label(self, subpanel_status: bool, node: Node) -> None:
         f (bpy.types.Node): Node
     """
     layout = self.layout
+    icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
     node_label = get_node_label(node)
     row = layout.row()
-    icon = 'DOWNARROW_HLT' if subpanel_status else 'RIGHTARROW'
+    row.alignment = 'LEFT'
+    ancestors = num_ancestors(node, top_level_frame)
+    if node.parent:
+        i = 0
+        while i < ancestors:
+            row.label(text=' ')
+            i += 1
     row.prop(node.mmm_node_props, 'subpanel_status', icon=icon,
              icon_only=True, emboss=False)
     row.label(text=node_label)
 
 
 def get_node_label(node):
+    """Return node label if there is one, else return node name.
+
+    Args:
+        node (bpy.types.Node): Node
+
+    Returns:
+        str: Node label
+    """
     if node.label and not node.label.isspace():
         return node.label
     else:
         return node.name
 
 
-def display_framed_nodes(self, context, children: List[Node]) -> None:
+def num_ancestors(node, top_level_frame, ancestors=0):
+    """Return number of ancestor of a node.
+
+    Args:
+        node (bpy.types.Node): node
+        ancestors (int, optional): Num ancestors. Defaults to 0.
+
+    Returns:
+        int: num ancestors
+    """
+    if not node.parent:
+        return ancestors
+    elif node.parent.name == top_level_frame:
+        return 0
+    if node.parent:
+        ancestors = num_ancestors(node.parent, top_level_frame, ancestors) + 1
+    return ancestors
+
+
+def display_framed_nodes(self, context, children: List[Node], top_level_frame=None) -> None:
     """Display all nodes in a frame.
 
     Args:
@@ -210,14 +256,14 @@ def display_framed_nodes(self, context, children: List[Node]) -> None:
     for child in children:
         child_label = get_node_label(child)
         try:
-            display_node(self, context, child_label, child)
+            display_node(self, context, child_label, child, top_level_frame)
         # catch unsupported node types
         except TypeError:
             layout.label(text=child_label)
             layout.label(text="Node type not supported.")
 
 
-def display_node(self, context, node_label, node) -> None:
+def display_node(self, context, node_label, node, top_level_frame=None) -> None:
     """Display node properties in panel.
 
     Args:
@@ -233,7 +279,7 @@ def display_node(self, context, node_label, node) -> None:
     layout = self.layout
 
     subpanel_status = node.mmm_node_props.subpanel_status
-    display_subpanel_label(self, subpanel_status, node)
+    display_subpanel_label(self, subpanel_status, node, top_level_frame)
     if subpanel_status:
         if node.type == 'VALUE':
             layout.prop(node.outputs['Value'],
@@ -278,7 +324,7 @@ class MMM_Scene_Props(PropertyGroup):
         obj = context.object
         mod = obj.modifiers[scene_props.geom_node_mod]
         nodes = mod.node_group.nodes
-        return self.create_node_enums(nodes, enum_items)
+        return self.create_frame_enums(nodes, enum_items)
 
     def create_mat_frame_enums(self, context):
         """Return enum list of active material frame nodes that have expose_frame property set to True.
@@ -298,9 +344,18 @@ class MMM_Scene_Props(PropertyGroup):
         tree = mat.node_tree
         nodes = tree.nodes
 
-        return self.create_node_enums(nodes, enum_items)
+        return self.create_frame_enums(nodes, enum_items)
 
     def create_geom_node_mod_enums(self, context):
+        """Return enum list of geometry node modifiers of active object
+        that contain a frame with expose_frame property set to true.
+
+        Args:
+            context (bpy.types.Context): Blender Context
+
+        Returns:
+            list(enum_items): enum items
+        """
         enum_items = []
         if context is None:
             return enum_items
@@ -321,7 +376,16 @@ class MMM_Scene_Props(PropertyGroup):
             enum_items.append(enum)
         return enum_items
 
-    def create_node_enums(self, nodes, enum_items):
+    def create_frame_enums(self, nodes, enum_items):
+        """Return enum list of frame nodes where expose_frame property is set to true.
+
+        Args:
+            nodes (list(bpy.types.Node)): list of nodes
+            enum_items (list(enum_items)): list of enum items
+
+        Returns:
+            list(enum_items): emu items
+        """
         try:
             frames = sorted([
                 n for n in nodes
