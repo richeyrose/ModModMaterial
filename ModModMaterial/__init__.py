@@ -14,14 +14,14 @@
 from . import auto_load
 
 bl_info = {
-    "name": "ModModMaterial",
+    "name": "Node Expose",
     "author": "Richard Rose",
     "description": "",
     "blender": (3, 0, 1),
     "version": (0, 0, 1),
-    "location": "View3D > UI > Material",
+    "location": "View3D > UI > Node Expose",
     "warning": "",
-    "category": "Material"
+    "category": "Node"
 }
 
 

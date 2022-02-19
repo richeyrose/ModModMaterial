@@ -278,14 +278,12 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
 
     layout = self.layout
 
-    subpanel_status = node.mmm_node_props.subpanel_status
-    display_subpanel_label(self, subpanel_status, node, top_level_frame)
-    if subpanel_status:
-        if node.type == 'VALUE':
-            layout.prop(node.outputs['Value'],
-                        'default_value', text=node_label)
-        else:
-            # layout.label(text=node_label)
+    if node.type == 'VALUE':
+        layout.prop(node.outputs['Value'], 'default_value', text=node_label)
+    else:
+        subpanel_status = node.mmm_node_props.subpanel_status
+        display_subpanel_label(self, subpanel_status, node, top_level_frame)
+        if subpanel_status:
             layout.context_pointer_set("node", node)
             if hasattr(node, "draw_buttons_ext"):
                 node.draw_buttons_ext(context, layout)
