@@ -198,12 +198,9 @@ def display_subpanel_label(self, subpanel_status: bool, node: Node, top_level_fr
     node_label = get_node_label(node)
     row = layout.row()
     row.alignment = 'LEFT'
-    ancestors = num_ancestors(node, top_level_frame)
-    if node.parent:
-        i = 0
-        while i < ancestors:
-            row.label(text=' ')
-            i += 1
+    if num_ancestors(node, top_level_frame):
+        inset = " " * num_ancestors(node)
+        row.label(text=inset)
     row.prop(node.mmm_node_props, 'subpanel_status', icon=icon,
              icon_only=True, emboss=False)
     row.label(text=node_label)
@@ -224,7 +221,7 @@ def get_node_label(node):
         return node.name
 
 
-def num_ancestors(node, top_level_frame, ancestors=0):
+def num_ancestors(node, top_level_frame=None, ancestors=0):
     """Return number of ancestor of a node.
 
     Args:
@@ -263,6 +260,13 @@ def display_framed_nodes(self, context, children: List[Node], top_level_frame=No
             layout.label(text="Node type not supported.")
 
 
+def split_col(node, top_level_frame):
+    if num_ancestors(node, top_level_frame) == 0:
+        return 1
+    else:
+        return num_ancestors(node, top_level_frame)
+
+
 def display_node(self, context, node_label, node, top_level_frame=None) -> None:
     """Display node properties in panel.
 
@@ -279,7 +283,12 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
     layout = self.layout
 
     if node.type == 'VALUE':
-        layout.prop(node.outputs['Value'], 'default_value', text=node_label)
+        row = layout.row()
+        #row.alignment = 'LEFT'
+        inset = " " * num_ancestors(node, top_level_frame)
+        row = row.split(factor=0.1 * split_col(node, top_level_frame))
+        row.label(text=inset)
+        row.prop(node.outputs['Value'], 'default_value', text=node_label)
     else:
         subpanel_status = node.mmm_node_props.subpanel_status
         display_subpanel_label(self, subpanel_status, node, top_level_frame)
@@ -293,8 +302,9 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
             value_inputs = [
                 socket for socket in node.inputs]
             if value_inputs:
-                layout.separator()
-                layout.label(text="Inputs:")
+                row = layout.row()
+                row.label(text="Inputs:")
+
                 for socket in value_inputs:
                     row = layout.row()
                     socket.draw(
