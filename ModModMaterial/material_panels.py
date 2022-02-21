@@ -20,7 +20,7 @@ class NODE_EXPOSE_PT_Material_N_Panel(Panel):
     @classmethod
     def poll(cls, context):
         prefs = get_prefs()
-        if prefs.show_mat_options_in_n_menu:
+        if prefs.expose_mat_nodes_in_n_panel:
             return mat_has_exposed_nodes(context)
         return False
 
@@ -52,7 +52,7 @@ class NODE_EXPOSE_PT_Material_options(Panel):
             bool: bool
         """
         prefs = get_prefs()
-        if prefs.show_mat_options_in_mat_props:
+        if prefs.expose_mat_nodes_in_mat_props:
             return mat_has_exposed_nodes(context)
         return False
 
@@ -74,16 +74,19 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
 
     @classmethod
     def poll(cls, context):
-        try:
-            mods = context.object.modifiers
-            for mod in mods:
-                if mod.type == 'NODES':
-                    for node in mod.node_group.nodes:
-                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
-                            return True
-            return False
-        except AttributeError:
-            return False
+        prefs = get_prefs()
+        if prefs.expose_geom_nodes_in_n_panel:
+            try:
+                mods = context.object.modifiers
+                for mod in mods:
+                    if mod.type == 'NODES':
+                        for node in mod.node_group.nodes:
+                            if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                                return True
+                return False
+            except AttributeError:
+                return False
+        return False
 
     def draw(self, context):
         scene = context.scene
@@ -102,6 +105,90 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
             obj = context.object
             mod = obj.modifiers[scene_props.geom_node_mod]
             nodes = mod.node_group.nodes
+            try:
+                display_frame(self, context, nodes,
+                              nodes[top_level_frame], top_level_frame)
+            except KeyError:
+                pass
+
+
+class NODE_EXPOSE_PT_Compositor_N_Panel(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Compositor_N_Panel'
+    bl_label = 'Compositor Nodes'
+    bl_region_type = 'UI'
+    bl_space_type = 'NODE_EDITOR'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.expose_comp_nodes_in_n_panel:
+            try:
+                for node in context.scene.node_tree.nodes:
+                    if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                        return True
+                return False
+            except AttributeError:
+                return False
+        return False
+
+    def draw(self, context):
+        scene = context.scene
+        scene_props = scene.mmm_scene_props
+        layout = self.layout
+
+        if scene_props.comp_top_level_frame:
+            layout.label(text="Top Level Frame")
+            layout.prop(scene_props, 'comp_top_level_frame', text='')
+            layout.separator()
+            top_level_frame = scene_props.comp_top_level_frame
+
+            comp_nodes = scene.node_tree.nodes
+            try:
+                display_frame(self, context, comp_nodes,
+                              comp_nodes[top_level_frame], top_level_frame)
+            except KeyError:
+                pass
+
+
+class NODE_EXPOSE_PT_Texture_N_Panel(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Texture_N_Panel'
+    bl_label = 'Texture Nodes'
+    bl_region_type = 'UI'
+    bl_space_type = 'NODE_EDITOR'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.expose_texture_nodes_in_n_panel:
+            try:
+                textures = bpy.data.textures
+                for texture in textures:
+                    for node in texture.node_tree.nodes:
+                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                            return True
+                return False
+            except AttributeError:
+                return False
+        return False
+
+    def draw(self, context):
+        scene = context.scene
+        scene_props = scene.mmm_scene_props
+        layout = self.layout
+
+        layout.label(text="Texture")
+        layout.prop(scene_props, 'active_texture', text='')
+
+        if scene_props.active_texture and scene_props.texture_top_level_frame:
+            layout.label(text="Top Level Frame")
+            layout.prop(scene_props, 'texture_top_level_frame', text='')
+            layout.separator()
+
+            top_level_frame = scene_props.texture_top_level_frame
+
+            nodes = bpy.data.textures[scene_props.active_texture].node_tree.nodes
             try:
                 display_frame(self, context, nodes,
                               nodes[top_level_frame], top_level_frame)
@@ -334,6 +421,16 @@ class MMM_Scene_Props(PropertyGroup):
         nodes = mod.node_group.nodes
         return self.create_frame_enums(nodes, enum_items)
 
+    def create_texture_frame_enums(self, context):
+        enum_items = []
+        if context is None:
+            return enum_items
+
+        scene_props = context.scene.mmm_scene_props
+        texture = bpy.data.textures[scene_props.active_texture]
+        nodes = texture.node_tree.nodes
+        return self.create_frame_enums(nodes, enum_items)
+
     def create_mat_frame_enums(self, context):
         """Return enum list of active material frame nodes that have expose_frame property set to True.
 
@@ -352,6 +449,14 @@ class MMM_Scene_Props(PropertyGroup):
         tree = mat.node_tree
         nodes = tree.nodes
 
+        return self.create_frame_enums(nodes, enum_items)
+
+    def create_comp_frame_enums(self, context):
+        enum_items = []
+        if context is None:
+            return enum_items
+
+        nodes = context.scene.node_tree.nodes
         return self.create_frame_enums(nodes, enum_items)
 
     def create_geom_node_mod_enums(self, context):
@@ -381,6 +486,18 @@ class MMM_Scene_Props(PropertyGroup):
 
         for mod in mods:
             enum = (mod.name, mod.name, "")
+            enum_items.append(enum)
+        return enum_items
+
+    def create_texture_enums(self, context):
+        enum_items = []
+        if context is None:
+            return enum_items
+
+        textures = bpy.data.textures
+
+        for texture in textures:
+            enum = (texture.name, texture.name, "")
             enum_items.append(enum)
         return enum_items
 
@@ -421,6 +538,18 @@ class MMM_Scene_Props(PropertyGroup):
     geom_top_level_frame: EnumProperty(
         name="Frame",
         items=create_geom_frame_enums,
+
+    )
+
+    comp_top_level_frame: EnumProperty(
+        name="Frame",
+        items=create_comp_frame_enums,
+        description="Any nodes or frames within this frame will be exposed for editing."
+    )
+
+    texture_top_level_frame: EnumProperty(
+        name="Frame",
+        items=create_texture_frame_enums,
         description="Any nodes or frames within this frame will be exposed for editing."
     )
 
@@ -428,6 +557,12 @@ class MMM_Scene_Props(PropertyGroup):
         name="Modifier",
         items=create_geom_node_mod_enums,
         description="Geometry node modifier to expose."
+    )
+
+    active_texture: EnumProperty(
+        name="Texture",
+        items=create_texture_enums,
+        description="Textures"
     )
 
 
