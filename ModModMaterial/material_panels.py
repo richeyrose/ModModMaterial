@@ -5,13 +5,52 @@ from bpy.app.translations import pgettext_iface as iface_
 from bpy.types import (
     Panel,
     PropertyGroup,
-    Node,
-    NodeFrame)
+    Node)
 from .lib.utils import get_prefs
 
 
-class NODE_EXPOSE_PT_Material_N_Panel(Panel):
-    bl_idname = 'NODE_EXPOSE_PT_Material_N_Panel'
+class MatPanel:
+    """Contains methods specific to exposing material nodes."""
+    @classmethod
+    def mat_has_exposed_nodes(cls, context):
+        """Check if material has exposed frames.
+
+        Args:
+            context (bpy.types.Context): context
+
+        Returns:
+            bool: True is material contains exposed frames.
+        """
+        try:
+            for node in context.object.active_material.node_tree.nodes:
+                if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                    return True
+            return False
+        except AttributeError:
+            return False
+
+    def draw_material_panel(self, context):
+        scene = context.scene
+        scene_props = scene.mmm_scene_props
+        layout = self.layout
+        if scene_props.mat_top_level_frame:
+            layout.prop(scene_props, 'mat_top_level_frame')
+            layout.separator()
+            top_level_frame = scene_props.mat_top_level_frame
+
+            obj = context.object
+            mat = obj.active_material
+            tree = mat.node_tree
+            nodes = tree.nodes
+            try:
+                display_frame(self, context, nodes,
+                              nodes[top_level_frame], top_level_frame)
+            except KeyError:
+                pass
+
+
+class NODE_EXPOSE_PT_Material_3D_N_Panel(Panel, MatPanel):
+    bl_idname = 'NODE_EXPOSE_PT_Material_3D_N_Panel'
     bl_label = 'Material Nodes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -20,20 +59,43 @@ class NODE_EXPOSE_PT_Material_N_Panel(Panel):
     @classmethod
     def poll(cls, context):
         prefs = get_prefs()
-        if prefs.expose_mat_nodes_in_n_panel:
-            return mat_has_exposed_nodes(context)
+        if prefs.expose_mat_nodes_in_3d_n_panel:
+            return cls.mat_has_exposed_nodes(context)
         return False
 
     def draw(self, context):
-        """Draw panel in material properties
+        """Draw panel in 3D view
 
         Args:
             context (bpy.types.Context): Blender context
         """
-        draw_material_panel(self, context)
+        self.draw_material_panel(context)
 
 
-class NODE_EXPOSE_PT_Material_options(Panel):
+class NODE_EXPOSE_PT_Material_Node_N_Panel(Panel, MatPanel):
+    bl_idname = 'NODE_EXPOSE_PT_Material_Node_N_Panel'
+    bl_label = 'Material Nodes'
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.expose_mat_nodes_in_node_n_panel:
+            return cls.mat_has_exposed_nodes(context)
+        return False
+
+    def draw(self, context):
+        """Draw panel in node editor
+
+        Args:
+            context (bpy.types.Context): Blender context
+        """
+        self.draw_material_panel(context)
+
+
+class NODE_EXPOSE_PT_Material_options(Panel, MatPanel):
     bl_idname = 'NODE_EXPOSE_PT_Material_Options'
     bl_label = 'Material Nodes'
     bl_space_type = 'PROPERTIES'
@@ -53,7 +115,7 @@ class NODE_EXPOSE_PT_Material_options(Panel):
         """
         prefs = get_prefs()
         if prefs.expose_mat_nodes_in_mat_props:
-            return mat_has_exposed_nodes(context)
+            return cls.mat_has_exposed_nodes(context)
         return False
 
     def draw(self, context):
@@ -62,39 +124,28 @@ class NODE_EXPOSE_PT_Material_options(Panel):
         Args:
             context (bpy.types.Context): Blender context
         """
-        draw_material_panel(self, context)
+        self.draw_material_panel(context)
 
 
-class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
-    bl_idname = 'NODE_EXPOSE_PT_Geometry_N_Panel'
-    bl_label = 'Geometry Nodes'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Node Expose'
-
+class GeomNodes:
+    """Contains methods specific to exposing geometry nodes."""
     @classmethod
-    def poll(cls, context):
-        prefs = get_prefs()
-        if prefs.expose_geom_nodes_in_n_panel:
-            try:
-                mods = context.object.modifiers
-                for mod in mods:
-                    if mod.type == 'NODES':
-                        for node in mod.node_group.nodes:
-                            if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
-                                return True
-                return False
-            except AttributeError:
-                return False
-        return False
+    def node_mod_has_exposed_nodes(cls, context):
+        try:
+            mods = context.object.modifiers
+            for mod in mods:
+                if mod.type == 'NODES':
+                    for node in mod.node_group.nodes:
+                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                            return True
+            return False
+        except AttributeError:
+            return False
 
-    def draw(self, context):
+    def draw_geom_nodes_panel(self, context):
         scene = context.scene
         scene_props = scene.mmm_scene_props
         layout = self.layout
-
-        layout.label(text="Node Modifier")
-        layout.prop(scene_props, 'geom_node_mod', text='')
 
         if scene_props.geom_top_level_frame:
             layout.label(text="Top Level Frame")
@@ -112,6 +163,45 @@ class NODE_EXPOSE_PT_Geometry_N_Panel(Panel):
                 pass
 
 
+class NODE_EXPOSE_PT_Geometry_Nodes_N_Panel(Panel, GeomNodes):
+    bl_idname = 'NODE_EXPOSE_PT_Geometry_Nodes_N_Panel'
+    bl_label = 'Geometry Nodes'
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.expose_geom_nodes_in_node_n_panel:
+            return cls.node_mod_has_exposed_nodes(context)
+        return False
+
+    def draw(self, context):
+        self.draw_geom_nodes_panel(context)
+
+
+class NODE_EXPOSE_PT_Geometry_View_3D_N_Panel(Panel, GeomNodes):
+    bl_idname = 'NODE_EXPOSE_PT_Geometry_View_3D_N_Panel'
+    bl_label = 'Geometry Nodes'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Node Expose'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs()
+        if prefs.expose_geom_nodes_in_3d_n_panel:
+            return cls.node_mod_has_exposed_nodes(context)
+        return False
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Node Modifier")
+        layout.prop(context.scene.mmm_scene_props, 'geom_node_mod', text='')
+        self.draw_geom_nodes_panel(context)
+
+
 class NODE_EXPOSE_PT_Compositor_N_Panel(Panel):
     bl_idname = 'NODE_EXPOSE_PT_Compositor_N_Panel'
     bl_label = 'Compositor Nodes'
@@ -122,7 +212,7 @@ class NODE_EXPOSE_PT_Compositor_N_Panel(Panel):
     @classmethod
     def poll(cls, context):
         prefs = get_prefs()
-        if prefs.expose_comp_nodes_in_n_panel:
+        if prefs.expose_comp_nodes_in_node_n_panel:
             try:
                 for node in context.scene.node_tree.nodes:
                     if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
@@ -161,7 +251,7 @@ class NODE_EXPOSE_PT_Texture_N_Panel(Panel):
     @classmethod
     def poll(cls, context):
         prefs = get_prefs()
-        if prefs.expose_texture_nodes_in_n_panel:
+        if prefs.expose_texture_nodes_in_node_n_panel:
             try:
                 textures = bpy.data.textures
                 for texture in textures:
@@ -196,51 +286,14 @@ class NODE_EXPOSE_PT_Texture_N_Panel(Panel):
                 pass
 
 
-def mat_has_exposed_nodes(context):
-    """Check if material has exposed frames.
-
-    Args:
-        context (bpy.types.Context): context
-
-    Returns:
-        bool: True is material contains exposed frames.
-    """
-    try:
-        for node in context.object.active_material.node_tree.nodes:
-            if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
-                return True
-        return False
-    except AttributeError:
-        return False
-
-
-def draw_material_panel(self, context):
-    scene = context.scene
-    scene_props = scene.mmm_scene_props
-    layout = self.layout
-    if scene_props.mat_top_level_frame:
-        layout.prop(scene_props, 'mat_top_level_frame')
-        layout.separator()
-        top_level_frame = scene_props.mat_top_level_frame
-
-        obj = context.object
-        mat = obj.active_material
-        tree = mat.node_tree
-        nodes = tree.nodes
-        try:
-            display_frame(self, context, nodes,
-                          nodes[top_level_frame], top_level_frame)
-        except KeyError:
-            pass
-
-
-def display_frame(self, context, nodes: list[Node], frame: NodeFrame, top_level_frame=None) -> None:
+def display_frame(self, context, nodes, frame, top_level_frame=None) -> None:
     """Recursively display all nodes within a frame, including nodes contained in sub frames.
 
     Args:
         context (bpy.types.Context): blender context
         nodes (list[Node]): nodes to search within
         frame (bpy.types.NodeFrame): parent node frame.
+        top_level_frame(bpy.types.NodeFrame): grandparent frame to stop at
     """
     children = sorted([n for n in nodes if n.parent ==
                        frame and n.type != 'FRAME'],
@@ -348,6 +401,15 @@ def display_framed_nodes(self, context, children: List[Node], top_level_frame=No
 
 
 def split_col(node, top_level_frame):
+    """Calculate how many times to split a panel column based on number of ancestors for drawing drop down.
+
+    Args:
+        node (bpy.types.Node): node
+        top_level_frame (_type_): grandparent frame
+
+    Returns:
+        int: num times to split column
+    """
     if num_ancestors(node, top_level_frame) == 0:
         return 1
     else:
@@ -411,6 +473,14 @@ class MMM_Scene_Props(PropertyGroup):
     """
 
     def create_geom_frame_enums(self, context):
+        """Return enum list of active geometry frame nodes that have expose_frame property set to True.
+
+        Args:
+            context (bpy.types.Context): blender context
+
+        Returns:
+            list(enum_items): enum items.
+        """
         enum_items = []
         if context is None:
             return enum_items
@@ -422,6 +492,14 @@ class MMM_Scene_Props(PropertyGroup):
         return self.create_frame_enums(nodes, enum_items)
 
     def create_texture_frame_enums(self, context):
+        """Return enum list of active texture frame nodes that have expose_frame property set to True.
+
+        Args:
+            context (bpy.types.Context): blender context
+
+        Returns:
+            list(enum_items): enum items.
+        """
         enum_items = []
         if context is None:
             return enum_items
@@ -452,6 +530,14 @@ class MMM_Scene_Props(PropertyGroup):
         return self.create_frame_enums(nodes, enum_items)
 
     def create_comp_frame_enums(self, context):
+        """Return enum list of active compositor frame nodes that have expose_frame property set to True.
+
+        Args:
+            context (bpy.types.Context): blender context
+
+        Returns:
+            list(enum_items): enum items.
+        """
         enum_items = []
         if context is None:
             return enum_items
@@ -490,6 +576,14 @@ class MMM_Scene_Props(PropertyGroup):
         return enum_items
 
     def create_texture_enums(self, context):
+        """Return enum list of textures.
+
+        Args:
+            context (bpy.types.Context): context
+
+        Returns:
+            list(enum_items): enum items
+        """
         enum_items = []
         if context is None:
             return enum_items
