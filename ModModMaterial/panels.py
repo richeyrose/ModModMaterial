@@ -1,6 +1,6 @@
 from typing import List
 import bpy
-from bpy.props import PointerProperty, EnumProperty
+from bpy.props import PointerProperty, EnumProperty, BoolProperty
 from bpy.app.translations import pgettext_iface as iface_
 from bpy.types import (
     Panel,
@@ -23,7 +23,7 @@ class MatPanel:
         """
         try:
             for node in context.object.active_material.node_tree.nodes:
-                if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                if node.type == 'FRAME' and node.ne_node_props.expose_frame:
                     return True
             return False
         except AttributeError:
@@ -31,7 +31,7 @@ class MatPanel:
 
     def draw_material_panel(self, context):
         scene = context.scene
-        scene_props = scene.mmm_scene_props
+        scene_props = scene.ne_scene_props
         layout = self.layout
         if scene_props.mat_top_level_frame:
             layout.prop(scene_props, 'mat_top_level_frame')
@@ -136,7 +136,7 @@ class GeomNodes:
             for mod in mods:
                 if mod.type == 'NODES':
                     for node in mod.node_group.nodes:
-                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                        if node.type == 'FRAME' and node.ne_node_props.expose_frame:
                             return True
             return False
         except AttributeError:
@@ -144,7 +144,7 @@ class GeomNodes:
 
     def draw_geom_nodes_panel(self, context):
         scene = context.scene
-        scene_props = scene.mmm_scene_props
+        scene_props = scene.ne_scene_props
         layout = self.layout
 
         if scene_props.geom_top_level_frame:
@@ -198,7 +198,7 @@ class NODE_EXPOSE_PT_Geometry_View_3D_N_Panel(Panel, GeomNodes):
     def draw(self, context):
         layout = self.layout
         layout.label(text="Node Modifier")
-        layout.prop(context.scene.mmm_scene_props, 'geom_node_mod', text='')
+        layout.prop(context.scene.ne_scene_props, 'geom_node_mod', text='')
         self.draw_geom_nodes_panel(context)
 
 
@@ -215,7 +215,7 @@ class NODE_EXPOSE_PT_Compositor_N_Panel(Panel):
         if prefs.expose_comp_nodes_in_node_n_panel:
             try:
                 for node in context.scene.node_tree.nodes:
-                    if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                    if node.type == 'FRAME' and node.ne_node_props.expose_frame:
                         return True
                 return False
             except AttributeError:
@@ -224,7 +224,7 @@ class NODE_EXPOSE_PT_Compositor_N_Panel(Panel):
 
     def draw(self, context):
         scene = context.scene
-        scene_props = scene.mmm_scene_props
+        scene_props = scene.ne_scene_props
         layout = self.layout
 
         if scene_props.comp_top_level_frame:
@@ -256,7 +256,7 @@ class NODE_EXPOSE_PT_Texture_N_Panel(Panel):
                 textures = bpy.data.textures
                 for texture in textures:
                     for node in texture.node_tree.nodes:
-                        if node.type == 'FRAME' and node.mmm_node_props.expose_frame:
+                        if node.type == 'FRAME' and node.ne_node_props.expose_frame:
                             return True
                 return False
             except AttributeError:
@@ -265,7 +265,7 @@ class NODE_EXPOSE_PT_Texture_N_Panel(Panel):
 
     def draw(self, context):
         scene = context.scene
-        scene_props = scene.mmm_scene_props
+        scene_props = scene.ne_scene_props
         layout = self.layout
 
         layout.label(text="Texture")
@@ -307,7 +307,7 @@ def display_frame(self, context, nodes, frame, top_level_frame=None) -> None:
         display_framed_nodes(self, context, children, top_level_frame)
         return
 
-    subpanel_status = frame.mmm_node_props.subpanel_status
+    subpanel_status = frame.ne_node_props.subpanel_status
 
     if children:
         children = [n for n in children if n.type != 'FRAME']
@@ -316,7 +316,7 @@ def display_frame(self, context, nodes, frame, top_level_frame=None) -> None:
         # handles nested frames
         for f in frames:
             if [n for n in nodes if n.parent == f]:
-                subpanel_status = f.mmm_node_props.subpanel_status
+                subpanel_status = f.ne_node_props.subpanel_status
                 display_subpanel_label(
                     self, subpanel_status,  f, top_level_frame)
                 if subpanel_status:
@@ -341,7 +341,7 @@ def display_subpanel_label(self, subpanel_status: bool, node: Node, top_level_fr
     if num_ancestors(node, top_level_frame):
         inset = " " * num_ancestors(node)
         row.label(text=inset)
-    row.prop(node.mmm_node_props, 'subpanel_status', icon=icon,
+    row.prop(node.ne_node_props, 'subpanel_status', icon=icon,
              icon_only=True, emboss=False)
     row.label(text=node_label)
 
@@ -426,7 +426,7 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
     """
     if node.type in ('REROUTE', 'FRAME'):
         return
-    if node.mmm_node_props.exclude_node:
+    if node.ne_node_props.exclude_node:
         return
 
     layout = self.layout
@@ -439,7 +439,7 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
         row.label(text=inset)
         row.prop(node.outputs['Value'], 'default_value', text=node_label)
     else:
-        subpanel_status = node.mmm_node_props.subpanel_status
+        subpanel_status = node.ne_node_props.subpanel_status
         display_subpanel_label(self, subpanel_status, node, top_level_frame)
         if subpanel_status:
             layout.context_pointer_set("node", node)
@@ -465,8 +465,53 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
                     )
 
 
-class MMM_Scene_Props(PropertyGroup):
-    """Mod Mod Material Scene Properties.
+class NODE_EXPOSE_PT_Node_Options(Panel):
+    bl_idname = 'NODE_EXPOSE_PT_Node_Options'
+    bl_label = 'Node options'
+    bl_category = 'Node'
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = 'Expose Nodes'
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_node is not None
+
+    def draw(self, context):
+        layout = self.layout
+        node = context.active_node
+        if node.type == 'FRAME':
+            layout.prop(node.ne_node_props, 'expose_frame')
+
+        if node.type != 'FRAME':
+            layout.prop(node.ne_node_props, 'exclude_node')
+
+
+class NODE_EXPOSE_Node_Props(PropertyGroup):
+    """Node Expose Node Properties.
+
+    Args:
+        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
+    """
+    prefs = get_prefs()
+
+    exclude_node: BoolProperty(
+        name="Exclude Node",
+        description="Don't show this node in UI.",
+        default=False)
+
+    subpanel_status: BoolProperty(
+        name="Show Subpanel",
+        default=True)
+
+    expose_frame: BoolProperty(
+        name="Expose Frame",
+        description="Expose frame and nodes in material panel?",
+        default=False)
+
+
+class NODE_EXPOSE_Scene_Props(PropertyGroup):
+    """Node Expose Scene Properties.
 
     Args:
         PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
@@ -485,7 +530,7 @@ class MMM_Scene_Props(PropertyGroup):
         if context is None:
             return enum_items
 
-        scene_props = context.scene.mmm_scene_props
+        scene_props = context.scene.ne_scene_props
         obj = context.object
         mod = obj.modifiers[scene_props.geom_node_mod]
         nodes = mod.node_group.nodes
@@ -504,7 +549,7 @@ class MMM_Scene_Props(PropertyGroup):
         if context is None:
             return enum_items
 
-        scene_props = context.scene.mmm_scene_props
+        scene_props = context.scene.ne_scene_props
         texture = bpy.data.textures[scene_props.active_texture]
         nodes = texture.node_tree.nodes
         return self.create_frame_enums(nodes, enum_items)
@@ -568,7 +613,7 @@ class MMM_Scene_Props(PropertyGroup):
             for mod in obj.modifiers
             if mod.type == 'NODES'
             for node in mod.node_group.nodes
-            if node.type == 'FRAME' and node.mmm_node_props.expose_frame)
+            if node.type == 'FRAME' and node.ne_node_props.expose_frame)
 
         for mod in mods:
             enum = (mod.name, mod.name, "")
@@ -608,7 +653,7 @@ class MMM_Scene_Props(PropertyGroup):
         try:
             frames = sorted([
                 n for n in nodes
-                if n.type == 'FRAME' and n.mmm_node_props.expose_frame],
+                if n.type == 'FRAME' and n.ne_node_props.expose_frame],
                 key=lambda n: n.label)
         except KeyError:
             return enum_items
@@ -661,9 +706,12 @@ class MMM_Scene_Props(PropertyGroup):
 
 
 def register():
-    bpy.types.Scene.mmm_scene_props = PointerProperty(
-        type=MMM_Scene_Props)
+    bpy.types.Scene.ne_scene_props = PointerProperty(
+        type=NODE_EXPOSE_Scene_Props)
+    bpy.types.Node.ne_node_props = PointerProperty(
+        type=NODE_EXPOSE_Node_Props)
 
 
 def unregister():
-    del bpy.types.Scene.mmm_scene_props
+    del bpy.types.Node.ne_node_props
+    del bpy.types.Scene.ne_scene_props
