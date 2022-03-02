@@ -313,15 +313,15 @@ def display_frame(self, context, nodes, frame, top_level_frame=None) -> None:
         children = [n for n in children if n.type != 'FRAME']
         display_framed_nodes(self, context, children, top_level_frame)
 
-        # handles nested frames
-        for f in frames:
-            if [n for n in nodes if n.parent == f]:
-                subpanel_status = f.ne_node_props.subpanel_status
-                display_subpanel_label(
-                    self, subpanel_status,  f, top_level_frame)
-                if subpanel_status:
-                    display_frame(self, context,  nodes,
-                                  f, top_level_frame)
+    # handles nested frames
+    for f in frames:
+        if [n for n in nodes if n.parent == f]:
+            subpanel_status = f.ne_node_props.subpanel_status
+            display_subpanel_label(
+                self, subpanel_status,  f, top_level_frame)
+            if subpanel_status:
+                display_frame(self, context,  nodes,
+                              f, top_level_frame)
 
     return
 
