@@ -433,10 +433,12 @@ def display_node(self, context, node_label, node, top_level_frame=None) -> None:
 
     if node.type == 'VALUE':
         row = layout.row()
-        #row.alignment = 'LEFT'
-        inset = " " * num_ancestors(node, top_level_frame)
-        row = row.split(factor=0.1 * split_col(node, top_level_frame))
-        row.label(text=inset)
+        ancestors = num_ancestors(node, top_level_frame)
+
+        if ancestors >= 1:
+            row = row.split(factor=0.1 * split_col(node, top_level_frame))
+            inset = " " * ancestors
+            row.label(text=inset)
         row.prop(node.outputs['Value'], 'default_value', text=node_label)
     else:
         subpanel_status = node.ne_node_props.subpanel_status
@@ -487,37 +489,58 @@ class NODE_EXPOSE_PT_Node_Options(Panel):
             layout.prop(node.ne_node_props, 'exclude_node')
 
 
-class NODE_EXPOSE_Node_Props(PropertyGroup):
-    """Node Expose Node Properties.
+class NODE_EXPOSE_Enum_Helpers:
+    def get_mat_frame_enums(self, context):
+        """Return enum list of active material frame nodes that have expose_frame property set to True.
 
-    Args:
-        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
-    """
-    prefs = get_prefs()
+        Args:
+            context (bpy.types.Context): blender context
 
-    exclude_node: BoolProperty(
-        name="Exclude Node",
-        description="Don't show this node in UI.",
-        default=False)
+        Returns:
+            list(enum_items): enum items.
+        """
+        enum_items = []
+        if context is None:
+            return enum_items
 
-    subpanel_status: BoolProperty(
-        name="Show Subpanel",
-        default=True)
+        obj = context.object
+        mat = obj.active_material
+        tree = mat.node_tree
+        nodes = tree.nodes
 
-    expose_frame: BoolProperty(
-        name="Expose Frame",
-        description="Expose frame and nodes in material panel?",
-        default=False)
+        enum_items = self.create_frame_enums(nodes, enum_items)
+        return enum_items
 
+    def create_frame_enums(self, nodes, enum_items):
+        """Return enum list of frame nodes where expose_frame property is set to true.
 
-class NODE_EXPOSE_Scene_Props(PropertyGroup):
-    """Node Expose Scene Properties.
+        Args:
+            nodes (list(bpy.types.Node)): list of nodes
+            enum_items (list(enum_items)): list of enum items
 
-    Args:
-        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
-    """
+        Returns:
+            list(enum_items): emu items
+        """
+        try:
+            frames = sorted([
+                n for n in nodes
+                if n.type == 'FRAME' and n.ne_node_props.expose_frame],
+                key=lambda n: n.label)
+        except KeyError:
+            return enum_items
 
-    def create_geom_frame_enums(self, context):
+        if not frames:
+            return enum_items
+
+        for frame in frames:
+            label = get_node_label(frame)
+
+            enum = (frame.name, label, "")
+            enum_items.append(enum)
+
+        return enum_items
+
+    def get_geom_frame_enums(self, context):
         """Return enum list of active geometry frame nodes that have expose_frame property set to True.
 
         Args:
@@ -536,7 +559,7 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup):
         nodes = mod.node_group.nodes
         return self.create_frame_enums(nodes, enum_items)
 
-    def create_texture_frame_enums(self, context):
+    def get_texture_frame_enums(self, context):
         """Return enum list of active texture frame nodes that have expose_frame property set to True.
 
         Args:
@@ -554,27 +577,7 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup):
         nodes = texture.node_tree.nodes
         return self.create_frame_enums(nodes, enum_items)
 
-    def create_mat_frame_enums(self, context):
-        """Return enum list of active material frame nodes that have expose_frame property set to True.
-
-        Args:
-            context (bpy.types.Context): blender context
-
-        Returns:
-            list(enum_items): enum items.
-        """
-        enum_items = []
-        if context is None:
-            return enum_items
-
-        obj = context.object
-        mat = obj.active_material
-        tree = mat.node_tree
-        nodes = tree.nodes
-
-        return self.create_frame_enums(nodes, enum_items)
-
-    def create_comp_frame_enums(self, context):
+    def get_comp_frame_enums(self, context):
         """Return enum list of active compositor frame nodes that have expose_frame property set to True.
 
         Args:
@@ -589,6 +592,66 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup):
 
         nodes = context.scene.node_tree.nodes
         return self.create_frame_enums(nodes, enum_items)
+
+
+class NODE_EXPOSE_Node_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
+    """Node Expose Node Properties.
+
+    Args:
+        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
+    """
+
+    def update_frame_enums(self, context):
+        mat_enums = self.get_mat_frame_enums(context)
+        if mat_enums:
+            context.scene.ne_scene_props.mat_top_level_frame = mat_enums[0][0]
+
+        geom_enums = self.get_geom_frame_enums(context)
+        if geom_enums:
+            context.scene.ne_scene_props.geom_top_level_frame = geom_enums[0][0]
+
+        comp_enums = self.get_comp_frame_enums(context)
+        if comp_enums:
+            context.scene.ne_scene_props.comp_top_level_frame = comp_enums[0][0]
+
+        texture_enums = self.get_texture_frame_enums(context)
+        if texture_enums:
+            context.scene.ne_scene_props.texture_top_level_frame = texture_enums[0][0]
+
+    exclude_node: BoolProperty(
+        name="Exclude Node",
+        description="Don't show this node in UI.",
+        default=False)
+
+    subpanel_status: BoolProperty(
+        name="Show Subpanel",
+        default=True)
+
+    expose_frame: BoolProperty(
+        name="Expose Frame",
+        description="Expose frame and nodes?",
+        default=False,
+        update=update_frame_enums)
+
+
+class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
+    """Node Expose Scene Properties.
+
+    Args:
+        PropertyGroup (bpy.types.PropertyGroup): PropertyGroup
+    """
+
+    def create_mat_frame_enums(self, context):
+        return self.get_mat_frame_enums(context)
+
+    def create_geom_frame_enums(self, context):
+        return self.get_geom_frame_enums(context)
+
+    def create_comp_frame_enums(self, context):
+        return self.get_comp_frame_enums(context)
+
+    def create_texture_frame_enums(self, context):
+        return self.get_texture_frame_enums(context)
 
     def create_geom_node_mod_enums(self, context):
         """Return enum list of geometry node modifiers of active object
@@ -638,35 +701,6 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup):
         for texture in textures:
             enum = (texture.name, texture.name, "")
             enum_items.append(enum)
-        return enum_items
-
-    def create_frame_enums(self, nodes, enum_items):
-        """Return enum list of frame nodes where expose_frame property is set to true.
-
-        Args:
-            nodes (list(bpy.types.Node)): list of nodes
-            enum_items (list(enum_items)): list of enum items
-
-        Returns:
-            list(enum_items): emu items
-        """
-        try:
-            frames = sorted([
-                n for n in nodes
-                if n.type == 'FRAME' and n.ne_node_props.expose_frame],
-                key=lambda n: n.label)
-        except KeyError:
-            return enum_items
-
-        if not frames:
-            return enum_items
-
-        for frame in frames:
-            label = get_node_label(frame)
-
-            enum = (frame.name, label, "")
-            enum_items.append(enum)
-
         return enum_items
 
     mat_top_level_frame: EnumProperty(
