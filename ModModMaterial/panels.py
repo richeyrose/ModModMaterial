@@ -552,12 +552,14 @@ class NODE_EXPOSE_Enum_Helpers:
         enum_items = []
         if context is None:
             return enum_items
-
-        scene_props = context.scene.ne_scene_props
-        obj = context.object
-        mod = obj.modifiers[scene_props.geom_node_mod]
-        nodes = mod.node_group.nodes
-        return self.create_frame_enums(nodes, enum_items)
+        try:
+            scene_props = context.scene.ne_scene_props
+            obj = context.object
+            mod = obj.modifiers[scene_props.geom_node_mod]
+            nodes = mod.node_group.nodes
+            return self.create_frame_enums(nodes, enum_items)
+        except KeyError:
+            return enum_items
 
     def get_texture_frame_enums(self, context):
         """Return enum list of active texture frame nodes that have expose_frame property set to True.
@@ -571,11 +573,13 @@ class NODE_EXPOSE_Enum_Helpers:
         enum_items = []
         if context is None:
             return enum_items
-
-        scene_props = context.scene.ne_scene_props
-        texture = bpy.data.textures[scene_props.active_texture]
-        nodes = texture.node_tree.nodes
-        return self.create_frame_enums(nodes, enum_items)
+        try:
+            scene_props = context.scene.ne_scene_props
+            texture = bpy.data.textures[scene_props.active_texture]
+            nodes = texture.node_tree.nodes
+            return self.create_frame_enums(nodes, enum_items)
+        except KeyError:
+            return enum_items
 
     def get_comp_frame_enums(self, context):
         """Return enum list of active compositor frame nodes that have expose_frame property set to True.
@@ -602,21 +606,23 @@ class NODE_EXPOSE_Node_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
     """
 
     def update_frame_enums(self, context):
-        mat_enums = self.get_mat_frame_enums(context)
-        if mat_enums:
-            context.scene.ne_scene_props.mat_top_level_frame = mat_enums[0][0]
-
-        geom_enums = self.get_geom_frame_enums(context)
-        if geom_enums:
-            context.scene.ne_scene_props.geom_top_level_frame = geom_enums[0][0]
-
-        comp_enums = self.get_comp_frame_enums(context)
-        if comp_enums:
-            context.scene.ne_scene_props.comp_top_level_frame = comp_enums[0][0]
-
-        texture_enums = self.get_texture_frame_enums(context)
-        if texture_enums:
-            context.scene.ne_scene_props.texture_top_level_frame = texture_enums[0][0]
+        tree_type = type(self.id_data)
+        if tree_type == bpy.types.CompositorNodeTree:
+            comp_enums = self.get_comp_frame_enums(context)
+            if comp_enums:
+                context.scene.ne_scene_props.comp_top_level_frame = comp_enums[0][0]
+        elif tree_type == bpy.types.ShaderNodeTree:
+            mat_enums = self.get_mat_frame_enums(context)
+            if mat_enums:
+                context.scene.ne_scene_props.mat_top_level_frame = mat_enums[0][0]
+        elif tree_type == bpy.types.GeometryNodeTree:
+            geom_enums = self.get_geom_frame_enums(context)
+            if geom_enums:
+                context.scene.ne_scene_props.geom_top_level_frame = geom_enums[0][0]
+        elif tree_type == bpy.types.TextureNodeTree:
+            texture_enums = self.get_texture_frame_enums(context)
+            if texture_enums:
+                context.scene.ne_scene_props.texture_top_level_frame = texture_enums[0][0]
 
     exclude_node: BoolProperty(
         name="Exclude Node",
@@ -711,7 +717,7 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
     geom_top_level_frame: EnumProperty(
         name="Frame",
         items=create_geom_frame_enums,
-
+        description="Any nodes or frames within this frame will be exposed for editing."
     )
 
     comp_top_level_frame: EnumProperty(
