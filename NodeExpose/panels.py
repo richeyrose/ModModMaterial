@@ -811,35 +811,21 @@ def update_enums(dummy):
 
     try:
         comp_nodes = context.scene.node_tree.nodes
-        comp_frames = [n for n in comp_nodes if n.type ==
-                       'FRAME' and n.ne_node_props.expose_frame]
+        frames = sorted([
+            n for n in comp_nodes
+            if n.type == 'FRAME' and n.ne_node_props.expose_frame],
+            key=lambda n: n.label)
 
-        comp_tlf = scene_props.comp_top_level_frame
-        if comp_frames:
-            if comp_tlf == '':
-                enum_items = []
-
-                frames = sorted([
-                    n for n in comp_nodes
-                    if n.type == 'FRAME' and n.ne_node_props.expose_frame],
-                    key=lambda n: n.label)
-
-                for frame in frames:
-                    label = get_node_label(frame)
-
-                    enum = (frame.name, label, "")
-                    enum_items.append(enum)
-
-                if enum_items:
-                    context.scene.ne_scene_props.comp_top_level_frame = enum_items[0][0]
+        if frames:
+            comp_tlf = scene_props.comp_top_level_frame
+            if comp_tlf not in [f.name for f in frames]:
+                context.scene.ne_scene_props.comp_top_level_frame = frames[0].name
 
     except AttributeError:
         pass
-    # if comp_tlf and comp_tlf in comp_frames:
-    #     scene_props.comp_top_level_frame = comp_tlf
 
 
-bpy.app.handlers.depsgraph_update_post.append(update_enums)
+bpy.app.handlers.depsgraph_update_pre.append(update_enums)
 
 
 def register():
