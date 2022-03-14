@@ -103,7 +103,9 @@ class NODE_EXPOSE_Enum_Helpers:
             texture = bpy.data.textures[scene_props.active_texture]
             nodes = texture.node_tree.nodes
             return self.create_frame_enums(nodes, enum_items)
-        except KeyError:
+        except (KeyError, AttributeError):
+            enum = ('%DUMMY', 'None', '')
+            enum_items.append(enum)
             return enum_items
 
     def get_comp_frame_enums(self, context):
@@ -410,12 +412,12 @@ class TextureNodes:
             layout.separator()
 
             top_level_frame = scene_props.texture_top_level_frame
-
-            nodes = bpy.data.textures[scene_props.active_texture].node_tree.nodes
             try:
+                nodes = bpy.data.textures[scene_props.active_texture].node_tree.nodes
+
                 display_frame(self, context, nodes,
                               nodes[top_level_frame], top_level_frame)
-            except KeyError:
+            except (KeyError, AttributeError):
                 pass
 
 
@@ -740,6 +742,9 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
         for mod in mods:
             enum = (mod.name, mod.name, "")
             enum_items.append(enum)
+        if not enum_items:
+            enum = ('%DUMMY', 'None', "")
+            enum_items.append(enum)
         return enum_items
 
     def create_texture_enums(self, context):
@@ -758,8 +763,9 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
         textures = bpy.data.textures
 
         for texture in textures:
-            enum = (texture.name, texture.name, "")
-            enum_items.append(enum)
+            if hasattr(texture.node_tree, 'nodes'):
+                enum = (texture.name, texture.name, "")
+                enum_items.append(enum)
         if not enum_items:
             enum = ('DUMMY', "None", "")
             enum_items.append(enum)
@@ -803,6 +809,11 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
 
 @persistent
 def update_enums(dummy):
+    """If necessary resets enums on depsgraph update.
+
+    Args:
+        dummy (any): dummy variable
+    """
     context = bpy.context
     scene = context.scene
     scene_props = scene.ne_scene_props
@@ -835,7 +846,7 @@ def update_enums(dummy):
         pass
     try:
         obj = context.object
-        mods = sorted([m for m in obj.modifiers if m.type ==
+        mods = sorted([m.name for m in obj.modifiers if m.type ==
                        'NODES'], key=lambda m: m.name)
         if mods:
             geom_node_mod = scene_props.geom_node_mod
