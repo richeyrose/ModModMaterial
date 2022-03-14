@@ -14,10 +14,10 @@
 from . import auto_load
 
 bl_info = {
-    "name": "Node Expose",
+    "name": "NodeExpose",
     "author": "Richard Rose",
     "description": "",
-    "blender": (3, 0, 1),
+    "blender": (3, 1, 0),
     "version": (0, 0, 1),
     "location": "View3D > UI > Node Expose",
     "warning": "",

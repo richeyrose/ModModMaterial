@@ -10,8 +10,8 @@ except Exception as e:
 
 
 def main():
-    addon = "ModModMaterial"
-    blender_rev = "3.0.1"
+    addon = "NodeExpose"
+    blender_rev = "3.1"
 
     try:
         exit_val = BAT.test_blender_addon(

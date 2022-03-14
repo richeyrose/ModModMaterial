@@ -53,6 +53,8 @@ class NODE_EXPOSE_Enum_Helpers:
             return enum_items
 
         if not frames:
+            enum = ('DUMMY', 'None', "")
+            enum_items.append(enum)
             return enum_items
 
         for frame in frames:
@@ -118,8 +120,8 @@ class NODE_EXPOSE_Enum_Helpers:
             return enum_items
 
         nodes = context.scene.node_tree.nodes
-        enums = self.create_frame_enums(nodes, enum_items)
-        return enums
+        enum_items = self.create_frame_enums(nodes, enum_items)
+        return enum_items
 
 
 class MatPanel:
@@ -355,7 +357,7 @@ class NODE_EXPOSE_PT_Compositor_View_3D_N_Panel(Panel, CompositorNodes):
     @classmethod
     def poll(cls, context):
         prefs = get_prefs()
-        if prefs.expose_comp_nodes_in_node_n_panel:
+        if prefs.expose_comp_nodes_in_3d_n_panel:
             return cls.comp_has_exposed_nodes(context)
         return False
 
@@ -735,13 +737,6 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
         mods = sorted([m for m in obj.modifiers if m.type ==
                       'NODES'], key=lambda m: m.name)
 
-        mods = set(
-            mod
-            for mod in obj.modifiers
-            if mod.type == 'NODES'
-            for node in mod.node_group.nodes
-            if node.type == 'FRAME' and node.ne_node_props.expose_frame)
-
         for mod in mods:
             enum = (mod.name, mod.name, "")
             enum_items.append(enum)
@@ -764,6 +759,9 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
 
         for texture in textures:
             enum = (texture.name, texture.name, "")
+            enum_items.append(enum)
+        if not enum_items:
+            enum = ('DUMMY', "None", "")
             enum_items.append(enum)
         return enum_items
 
@@ -808,20 +806,68 @@ def update_enums(dummy):
     context = bpy.context
     scene = context.scene
     scene_props = scene.ne_scene_props
-
     try:
         comp_nodes = context.scene.node_tree.nodes
-        frames = sorted([
+
+        comp_frames = sorted([
             n for n in comp_nodes
             if n.type == 'FRAME' and n.ne_node_props.expose_frame],
             key=lambda n: n.label)
 
-        if frames:
+        if comp_frames:
             comp_tlf = scene_props.comp_top_level_frame
-            if comp_tlf not in [f.name for f in frames]:
-                context.scene.ne_scene_props.comp_top_level_frame = frames[0].name
+            if comp_tlf not in [f.name for f in comp_frames]:
+                context.scene.ne_scene_props.comp_top_level_frame = comp_frames[0].name
+    except (AttributeError, KeyError):
+        pass
+    try:
+        mat_nodes = context.object.active_material.node_tree.nodes
+        mat_frames = sorted([
+            n for n in mat_nodes
+            if n.type == 'FRAME' and n.ne_node_props.expose_frame],
+            key=lambda n: n.label)
 
-    except AttributeError:
+        if mat_frames:
+            mat_tlf = scene_props.mat_top_level_frame
+            if mat_tlf not in [f.name for f in mat_frames]:
+                context.scene.ne_scene_props.mat_top_level_frame = mat_frames[0].name
+    except(AttributeError, KeyError):
+        pass
+    try:
+        obj = context.object
+        mods = sorted([m for m in obj.modifiers if m.type ==
+                       'NODES'], key=lambda m: m.name)
+        if mods:
+            geom_node_mod = scene_props.geom_node_mod
+            if geom_node_mod not in mods:
+                context.scene.ne_scene_props.geom_node_mod = mods[0].name
+    except(AttributeError, KeyError):
+        pass
+    try:
+        geom_nodes = context.object.modifiers[scene_props.geom_node_mod].node_group.nodes
+        geom_frames = sorted([
+            n for n in geom_nodes
+            if n.type == 'FRAME' and n.ne_node_props.expose_frame],
+            key=lambda n: n.label)
+
+        if geom_frames:
+            geom_tlf = scene_props.geom_top_level_frame
+            if geom_tlf not in [f.name for f in geom_frames]:
+                context.scene.ne_scene_props.geom_top_level_frame = geom_frames[0].name
+    except(AttributeError, KeyError):
+        pass
+    try:
+        texture_nodes = bpy.data.textures[scene_props.active_texture].node_tree.nodes
+        texture_frames = sorted([
+            n for n in texture_nodes
+            if n.type == 'FRAME' and n.ne_node_props.expose_frame],
+            key=lambda n: n.label)
+
+        if texture_frames:
+            texture_tlf = scene_props.texture_top_level_frame
+            if texture_tlf not in [f.name for f in texture_frames]:
+                context.scene.ne_scene_props.texture_top_level_frame = texture_frames[0].name
+    except (AttributeError, KeyError):
         pass
 
 

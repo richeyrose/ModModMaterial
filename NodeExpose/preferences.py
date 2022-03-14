@@ -35,6 +35,11 @@ class ModModMaterialPreferences(AddonPreferences):
         default=True
     )
 
+    expose_comp_nodes_in_3d_n_panel: BoolProperty(
+        name="Expose compositor nodes in 3D view N panel",
+        default=True
+    )
+
     expose_texture_nodes_in_node_n_panel: BoolProperty(
         name="Expose texture nodes in node editor N panel",
         default=True
@@ -52,5 +57,7 @@ class ModModMaterialPreferences(AddonPreferences):
         layout.prop(self, 'expose_mat_nodes_in_mat_props')
         layout.prop(self, 'expose_geom_nodes_in_3d_n_panel')
         layout.prop(self, 'expose_geom_nodes_in_node_n_panel')
-        layout.prop(self, 'expose_comp_nodes_in_n_panel')
-        layout.prop(self, 'expose_texture_nodes_in_n_panel')
+        layout.prop(self, 'expose_comp_nodes_in_node_n_panel')
+        layout.prop(self, 'expose_comp_nodes_in_3d_n_panel')
+        layout.prop(self, 'expose_texture_nodes_in_node_n_panel')
+        layout.prop(self, 'expose_texture_nodes_in_3d_n_panel')
