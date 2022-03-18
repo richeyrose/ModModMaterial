@@ -738,13 +738,17 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
         obj = context.object
         mods = sorted([m for m in obj.modifiers if m.type ==
                       'NODES'], key=lambda m: m.name)
-
         for mod in mods:
-            enum = (mod.name, mod.name, "")
-            enum_items.append(enum)
+            nodes = mod.node_group.nodes
+            frames = [f for f in nodes if f.type ==
+                      'FRAME' and f.ne_node_props.expose_frame]
+            if frames:
+                enum = (mod.name, mod.name, "")
+                enum_items.append(enum)
         if not enum_items:
-            enum = ('%DUMMY', 'None', "")
+            enum = ('%DUMMY', "None", "")
             enum_items.append(enum)
+
         return enum_items
 
     def create_texture_enums(self, context):
@@ -767,7 +771,7 @@ class NODE_EXPOSE_Scene_Props(PropertyGroup, NODE_EXPOSE_Enum_Helpers):
                 enum = (texture.name, texture.name, "")
                 enum_items.append(enum)
         if not enum_items:
-            enum = ('DUMMY', "None", "")
+            enum = ('%DUMMY', "None", "")
             enum_items.append(enum)
         return enum_items
 
@@ -848,6 +852,11 @@ def update_enums(dummy):
         obj = context.object
         mods = sorted([m.name for m in obj.modifiers if m.type ==
                        'NODES'], key=lambda m: m.name)
+
+        for mod in mods:
+            frames = [f for f in mod.node_group.nodes if f.type == 'FRAME']
+            if not frames:
+                mods.remove(mod)
         if mods:
             geom_node_mod = scene_props.geom_node_mod
             if geom_node_mod not in mods:
